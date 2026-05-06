@@ -1,0 +1,94 @@
+# `account` — developer notes
+
+> The `CLAUDE.md` shipped with the extracted
+> `nostra124/account` repo. Mirrors the eight-section
+> structure in `docs/templates/CLAUDE.md.foundation`,
+> specialised for `account`.
+
+## 1. Scope
+
+`account` is the identity foundation. Its scope is:
+
+- the current Unix user's GPG / SSH keys, git config,
+  sudoers
+- the set of remote accounts registered with this host
+  (each represented by a `<account>.pub` key under
+  `$XDG_CONFIG_HOME/account/{ssh,gpg}/`)
+- read-only queries of the local platform (FQDN, host
+  parts, online status)
+
+Out of scope: configuration storage (that's `config`),
+secret material (that's `secret`), repo orchestration
+(that's `repo`), system-user provisioning (that's
+`user`).
+
+## 2. Repo conventions
+
+Standard rpk per-package conventions: `bin/account`
+dispatcher with `command:<verb>` functions, no plugin
+loader. Subcommands are inline; there is no
+`libexec/account/` because account's surface is small
+enough that one self-contained dispatcher beats split
+files.
+
+(If a future verb gains real complexity, fold it into
+`libexec/account/<verb>` per FEAT-001 — the dispatcher
+already handles the libexec lookup pattern.)
+
+## 3. Issue authoring
+
+Same as `CLAUDE.md.foundation`. Frontmatter with
+`id: FEAT-NNN`. **Bugs come before features at the same
+priority level.**
+
+## 4. The no-shared-lib policy
+
+`account` is the foundation. Every line of code it
+needs is right here \(em no calls to other scripts in
+the collection at runtime. The only declared dependency
+is `rpk` for deployment metadata, never invoked at
+runtime.
+
+This means: if `account` needs cache-dir logic,
+config-file parsing, or platform detection, it
+**inlines** that code. Future contributors will be
+tempted to "DRY it up" by reaching for `cache` /
+`config` / `data` \(em **don't.** That direction
+re-introduces the foundation-breaking cycles FEAT-022
+removed.
+
+## 5. What is intentionally duplicated
+
+- **cache-home / config-home / data-home computation.**
+  Same shape as the corresponding `cache` / `config` /
+  `data` functions, inlined here. Sync semantics are
+  weak: bug-fixes propagate by re-implementation, not
+  by importing.
+- **Platform detection** (`account platform`,
+  `account fqdn`). Same logic as `cluster node platform`;
+  intentionally duplicated.
+- **GPG / SSH key handling.** Direct calls to `gpg(1)`
+  and `ssh-keygen(1)`; never delegated to `secret` or
+  `crypt`.
+
+## 6. Consumers
+
+Every other script in the collection: `config`, `data`,
+`secret`, `crypt`, `repo`, `event`, `services`, `check`,
+`user`, `cluster`, `bitcoin`, `lightning`, `dht`, …
+each declares `.rpk/depends/account` and calls
+`account` for identity / endpoint / GPG-encrypt /
+SSH-exec needs.
+
+## 7. Build / install
+
+`./configure && make install` (autoconf umbrella per
+FEAT-191). Stow-based install. `master` is always
+installable; releases are tagged via `.rpk/version`.
+
+## 8. Versioning
+
+Semver. Every release is recorded in `.rpk/versions`
+(TSV ledger \(em no orphan SHAs per rpk's BUG-001
+lesson). The `version` builtin returns the current
+`.rpk/version`.

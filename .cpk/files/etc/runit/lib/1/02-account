@@ -1,0 +1,17 @@
+#!/bin/sh
+
+SERVICE=$(hostname -s)
+[ -e /var/backups/ssh_host_ecdsa_key ]       && cp /var/backups/ssh_host_ecdsa_key        /etc/ssh/ssh_host_ecdsa_key
+[ -e /var/backups/ssh_host_ecdsa_key.pub ]   && cp /var/backups/ssh_host_ecdsa_key.pub    /etc/ssh/ssh_host_ecdsa_key.pub
+[ -e /var/backups/ssh_host_ed25519_key ]     && cp /var/backups/ssh_host_ed25519_key      /etc/ssh/ssh_host_ed25519_key
+[ -e /var/backups/ssh_host_ed25519_key.pub ] && cp /var/backups/ssh_host_ed25519_key.pub  /etc/ssh/ssh_host_ed25519_key.pub
+[ -e /var/backups/ssh_host_rsa_key ]         && cp /var/backups/ssh_host_rsa_key          /etc/ssh/ssh_host_rsa_key
+[ -e /var/backups/ssh_host_rsa_key.pub ]     && cp /var/backups/ssh_host_rsa_key.pub      /etc/ssh/ssh_host_rsa_key.pub
+
+account init
+config  init $SERVICE
+account identity              | config set $SERVICE/identity
+account gpg-export-public-key | config set $SERVICE/gpg-public-key
+account ssh-export-public-key | config set $SERVICE/ssh-public-key
+account ssh-export-known-host | config set $SERVICE/ssh-known-host
+account backup

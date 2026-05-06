@@ -1,0 +1,173 @@
+.\" Manpage for account(1).
+.\" To see this page formatted: man -l share/man/man1/account.1
+.TH ACCOUNT 1 "May 2026" "scripts" "User Commands"
+
+.SH NAME
+account \- identity foundation for the scripts collection
+
+.SH SYNOPSIS
+.B account
+.RI [ options ]
+.I command
+.RI [ args ...]
+
+.SH DESCRIPTION
+.B account
+is the identity foundation of the scripts collection. Every other
+script in the collection is built
+.I on top of
+identity \(em a system user, a configured remote endpoint, an SSH
+key, a GPG key. As a result,
+.B account
+calls no other script in the collection at runtime; the only
+declared dependency is
+.BR rpk (1)
+for deployment metadata, never invoked at runtime.
+
+.B account
+manages local identity (the current Unix user's GPG/SSH keys,
+git config, sudoers entry) and remote-account topology (the set
+of accounts this host has registered, and how to reach them).
+
+.SH SUBCOMMANDS
+The full subcommand surface is exposed via
+.B account help
+and grouped as follows:
+
+.TP
+.B local account commands
+.B init,
+.B identity,
+.B admin,
+.B username,
+.B platform,
+.B fqdn / hostname / domain.
+
+.TP
+.B user related commands
+.B create-user,
+.B delete-user,
+.B add-user.
+
+.TP
+.B gpg related commands
+.B gpg-secret-keys,
+.B gpg-public-keys,
+.B gpg-encrypt,
+.B gpg-decrypt,
+.B gpg-export-secret-key,
+.B gpg-export-public-key,
+.B gpg-export-owner-trust,
+.B gpg-fingerprint,
+.B gpg-delete-key.
+
+.TP
+.B ssh related commands
+.B ssh-export-secret-key,
+.B ssh-export-public-key,
+.B ssh-import-public-key,
+.B ssh-import-known-host.
+
+.TP
+.B account maintenance commands
+.B insert
+.RI < account >,
+.B remove
+.RI < account >,
+.B list,
+.B has,
+.B has-gpg-key,
+.B has-ssh-key.
+
+.TP
+.B account configuration commands
+.B cache-home,
+.B config-home,
+.B data-home.
+
+.TP
+.B remote execution commands
+.B exec,
+.B online,
+.B status.
+
+.TP
+.B host commands
+.B hosts.
+
+.TP
+.B file transfer
+.B put,
+.B get.
+
+.SH ENVIRONMENT
+.TP
+.B XDG_CONFIG_HOME
+Defaults to
+.IR ~/.config .
+account stores its config under
+.IR $XDG_CONFIG_HOME/account/ .
+.TP
+.B XDG_CACHE_HOME
+Defaults to
+.IR ~/.cache .
+.TP
+.B SELF_DEBUG
+When set, enables shell tracing
+.RB ( "set -vx" ).
+.TP
+.B SELF_QUIET
+When set, suppresses informational output.
+
+.SH FILES
+.TP
+.I $XDG_CONFIG_HOME/account/gpg/
+Per-account GPG public keys, named
+.IR <account>.pub .
+.TP
+.I $XDG_CONFIG_HOME/account/ssh/
+Per-account SSH public keys, named
+.IR <account>.pub .
+.TP
+.I $XDG_CONFIG_HOME/account/slaves/<identity>
+List of accounts registered as slaves of this identity.
+
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B "non-zero"
+Failure. The fatal-handler prints
+.IR "account: fatal - <message>" .
+
+.SH EXAMPLES
+.TP
+.B account init
+Bootstrap the local identity \(em generate GPG / SSH keys, set
+sudoers, configure git.
+.TP
+.B account insert alice@example
+Register
+.I alice@example
+as a remote account: copy the SSH key, fetch its GPG public key,
+add it to the local
+.IR slaves/<identity> .
+.TP
+.B "account exec alice@example -- account list"
+Run
+.B account list
+on the remote host
+.IR alice@example .
+
+.SH SEE ALSO
+.BR rpk (1),
+.BR repo (1),
+.BR config (1),
+.BR gpg (1),
+.BR ssh-keygen (1).
+
+.SH BUGS
+Report at
+.UR https://github.com/nostra124/scripts/issues
+.UE .

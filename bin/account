@@ -1,0 +1,1205 @@
+#!/bin/bash
+
+############################################################################
+# Configuration section
+############################################################################
+
+# This should always be the first line of code to facilitate debugging
+[ -n "$SELF_DEBUG" ] && set -vx
+
+# Per FEAT-194: VERSION read at runtime from .rpk/version (dev tree)
+# or $PREFIX/share/account/version (installed). The hardcoded fallback
+# is used only if both files are missing.
+__d="$(cd "$(dirname "$0")" && pwd)"; __s="$(basename "$0")"
+VERSION=$(cat "$__d/../.rpk/version" 2>/dev/null || cat "$__d/../share/$__s/version" 2>/dev/null || echo '1.0')
+unset __d __s
+SELF=$(basename $0)
+
+fatal() {
+	echo -e "$SELF: \033[31;mfatal - $1\033[0m" >&2
+	exit "${2:-1}"
+}
+
+debug() {
+	[ -n "$SELF_DEBUG" ] && echo -e "$SELF: \033[90;mdebug - $@\033[0m" >&2
+}
+
+info() {
+	[ ! -n "$SELF_QUIET" ] && echo -e "$SELF: info - \033[32;m$@\033[0m" >&2
+}
+
+warn() {
+	echo -e "$SELF: warn - \033[33;1;m$@\033[0m" >&2
+}
+
+# checks if a certain function exists: eg. has command update
+has() {
+	local KIND=$1
+	local NAME=$2
+
+	type -t $KIND:$NAME | grep -q function
+}
+
+# We need to run getops as soon as possible so we catch -d and other
+# options that will modify our behaviour.
+# Commands are handled at the end of this script.
+while getopts "dq" flag; do
+	if [ x"$1" = x'-q' ]; then
+		SELF_QUIET=1
+	fi
+	if [ x"$1" = x'-d' ]; then
+		SELF_DEBUG=1
+	fi
+	shift 1
+done
+
+# Read configuration and set defaults if anything's not set
+: ${XDG_CACHE_HOME:="~/.cache"}
+: ${XDG_CONFIG_HOME:="~/.config"}
+: ${XDG_DATA_HOME:="~/.local/var"}
+: ${XDG_SHARE_HOME:="~/.local/share"}
+: ${XDG_SOURCE_HOME:="~/.local/src"}
+: ${XDG_BACKUP_HOME:="/var/backups/$USER"}
+: ${EUID:=$(id -u)}
+: ${USER:=$(id -u -n)}
+
+if [ "$EUID" -eq 0 ]; then
+	USER=root
+	HOME=$(sudo -i sh -c 'echo $HOME')
+fi
+
+eval SELF_CONFIG=${XDG_CONFIG_HOME}/${SELF}
+mkdir -p ${SELF_CONFIG}/gpg
+mkdir -p ${SELF_CONFIG}/ssh
+
+[ -n "$SELF_VERBOSE" ] && set -vx
+
+command:help() {
+	if [[ $# != 0 ]]; then
+		if ! has command $1; then
+			echo "'$1' is not an $SELF command"
+			echo ""
+			echo "please see 'repo help'"
+			exit -1
+		elif ! has help $1; then
+			echo "No help found for '$1'"
+			echo ""
+			echo "please see 'repo help'"
+			exit -2
+		else
+			help:$1
+			return 0
+		fi
+	else
+		cat >&2 <<ENDHELP
+usage: $SELF <options> <command>
+
+   options:
+   -d                     Enable debug mode
+   -q                     Enable quiet mode
+
+   $SELF implements a simple tool to manage the local as well as remote 
+   accounts. The correstonding user needs to already exit.
+
+generic commands:
+   help                         print this help message
+   help <command>               prints command specific help.
+   version                      print the version of $SELF
+
+local account commands:
+   init                         initializes the local account
+   backup                       backups the identity files
+   identity                     show the local account identity
+   admin                        check if the local account has admin rights
+   username                     show the local account username
+   hostname                     show the local account hostname
+   nodename                     show the local account nodename
+   domainname                   show the local account domainname
+
+user related commands:
+   create-user <user>           creates and initializes the user
+   delete-user <user>           deletes the user
+   add-user <user> <group>      adds the user to a user group
+
+gpg related commands:
+   gpg-secret-keys              show the identities of the gpg secret keys
+   gpg-public-keys              show the identities of the gpg public keys
+   gpg-encrypt [accounts]       encrypts the data from stdin to stdout
+   gpg-decrypt                  decrypts the data from stdin to stdout
+   gpg-export-secret-key [key]  exports the secret key to stdout
+   gpg-export-public-key [key]  exports the public key to stdout
+   gpg-fingerprint [key]        exports the fingerprint to stdout
+   gpg-export-owner-trust       exports the trust database
+   gpg-import-public-key <key>  imports the public key from stdin or file <key>
+   gpg-import-key [key]         imports the key from stdin or file <key>
+   gpg-delete-key <key>         deletes the key from the gpg database
+
+ssh related commands:
+   ssh-public-keys              show the identities of the ssh public keys
+   ssh-export-secret-key        exports the secret key to stdout
+   ssh-export-public-key [key]  exports the public key to stdout
+   ssh-import-public-key <key>  imports the public key from stdin
+   ssh-export-known-host [key]  exports the public host key
+   ssh-import-known-host        imports the public host key from stdin
+
+account maintenance commands:
+   list                         lists the known remote accounts
+   insert <account> <gpg> <ssh> inserts the account to the known account list
+   remove <account>             removes the account from the known account list                      
+   has <account>                checks if the given account is connected (gpg and ssh)
+   has-gpg-key <account>        checks if the given account has a gpg-key
+   has-ssh-key <account>        checks if the given account has a ssh-key
+
+account configuration commands:
+   home [account]               shows the account home directory
+   cache-home [account]         shows the account cache home directory
+   config-home [account]        shows the account config home directory
+   data-home [account]          shows the account data home directory
+   share-home [account]         shows the account share home directory
+   source-home [account]        shows the account source home directory
+   backup-home [account]        shows the account backup home directory
+
+master account commands:
+   master                      lists the master remote accounts
+   allow <account>             allow the account to become our master
+   deny <account>              deny the account 
+
+slave account commands:
+   slaves [account]            lists the slave remote accounts
+   insert-slave <account>      insert <account> to the slave list
+   remove-slave <account>      remove <account> from the slave list
+   online                      lists online remote accounts
+   online <account>            checks if the account is online
+   status                      checks the availability of the accounts
+
+remote execution commands: 
+   run <cmd>                   run the command for each slave account 
+   exe [account]               executes the script read from stdin
+   sync [account]              syncs information from the slave accounts
+
+host commands:
+   platform [account]          prints the platform name of the account
+   hosts                       lists all knows hosts
+   remote-url <account> [purp] canonical SSH endpoint for sibling tools
+
+file transfer:
+   put <file> [account]        puts the local file <file> to the account
+   set <file> [account]        sets the content of file <file> from stdin
+   get <file> [account]        gets the content of file <file> to stdout
+   ins <file> <line> [account] inserts the line to the file <file>
+ENDHELP
+        fi
+}
+
+command:version() {
+	echo "$VERSION"
+}
+
+#------------------------------------------------------------------------------
+command:init() {
+	local USER=$(whoami)
+	local HOST=$(hostname -f | tr '[:upper:]' '[:lower:]')
+
+	git config --global advice.detachedHead false
+	git config --global init.defaultBranch master
+	git config --global --replace-all user.email "$USER@$HOST"
+	git config --global --replace-all user.name  "$USER@$HOST"
+	git config --global pull.rebase false
+
+	mkdir -p $HOME/.ssh
+	if [ -f /etc/ssh/ssh_host_rsa_key.pub ]; then
+		info "adding localhost to $HOME/.ssh/known_hosts"
+		local HOSTKEY=$(cat /etc/ssh/ssh_host_rsa_key.pub)
+		echo "localhost $HOSTKEY" | tee -a $HOME/.ssh/known_hosts > /dev/null
+		echo "${HOST} $HOSTKEY"   | tee -a $HOME/.ssh/known_hosts > /dev/null
+		sort -u $HOME/.ssh/known_hosts -o $HOME/.ssh/known_hosts
+	fi
+
+	local GPGID=$(gpg --list-secret-keys --with-colons 2> /dev/null | grep uid:u | sed 's/.*<//g' | sed 's/>.*//g' | grep $USER@$HOST)
+	if [ -z "$GPGID" ]; then
+		info "restoring gpg key from /var/backups"
+		[ -s /var/backups/$USER.gpg.secret ] && command:gpg-import-key         /var/backups/$USER.gpg.secret
+		[ -s /var/backups/$USER.gpg.public ] && command:gpg-import-key         /var/backups/$USER.gpg.public
+		[ -s /var/backups/$USER.gpg.trust  ] && command:gpg-import-owner-trust /var/backups/$USER.gpg.trust
+		local GPGID=$(gpg --list-secret-keys --with-colons 2> /dev/null | grep uid:u | sed 's/.*<//g' | sed 's/>.*//g' | grep $USER@$HOST)
+	else
+		info "GPG-Id: $GPGID"
+	fi
+
+	if [ -z "$GPGID" ]; then
+		info "generating new gpg key for $USER@$HOST"
+		cat > $HOME/.gnupg/$USER.cnf <<EOF
+%no-protection
+Key-Type: RSA
+Name-Real: $USER
+Name-Email: $USER@$HOST
+Expire-Date: 0
+EOF
+		gpg --gen-key --batch $HOME/.gnupg/$USER.cnf
+	fi
+
+	if [ ! -e $HOME/.gnupg/gpg.conf ]; then
+		info "generating new gpg.conf for $USER@$HOST"
+		cat > $HOME/.gnupg/gpg.conf <<EOF
+use-agent
+pinentry-mode loopback
+EOF
+	fi
+
+	if [ ! -e $HOME/.gnupg/gpg-agent.conf ]; then
+		info "generating new gpg-agent.conf for $USER@$HOST"
+		cat > $HOME/.gnupg/gpg-agent.conf <<EOF
+default-cache-ttl 34560000
+max-cache-ttl 34560000
+allow-loopback-pinentry
+EOF
+		gpgconf --kill gpg-agent
+	fi
+	echo RELOADAGENT | gpg-connect-agent
+
+	if [ ! -e $HOME/.ssh/id_rsa -o ! -e $HOME/.ssh/id_rsa.pub ]; then
+		info "restoring ssh key from /var/backups"
+		[ -s /var/backups/$USER.ssh.secret ] && cp /var/backups/$USER.ssh.secret $HOME/.ssh/id_rsa
+		[ -s /var/backups/$USER.ssh.public ] && cp /var/backups/$USER.ssh.public $HOME/.ssh/id_rsa.pub
+	fi
+
+	if [ ! -e $HOME/.ssh/id_rsa -o ! -e $HOME/.ssh/id_rsa.pub ]; then
+		info "generating new ssh key for $HOME/.ssh/id_rsa"
+		ssh-keygen -b 8192 -t rsa -f $HOME/.ssh/id_rsa -q -N "" -C "${USER}@${HOST}"
+	fi
+
+	info "adding $USER@$HOST to $HOME/.ssh/authorized_keys"
+	cat $HOME/.ssh/id_rsa.pub >> $HOME/.ssh/authorized_keys
+	sort -u $HOME/.ssh/authorized_keys -o $HOME/.ssh/authorized_keys
+
+	info "saving public keys for $USER@$HOST to ${SELF_CONFIG}"
+	mkdir -p ${SELF_CONFIG}/ssh && mkdir -p ${SELF_CONFIG}/gpg && mkdir -p ${SELF_CONFIG}/slaves
+	command:ssh-export-public-key     > ${SELF_CONFIG}/ssh/$USER@$HOST.pub
+	command:gpg-export-public-key     > ${SELF_CONFIG}/gpg/$USER@$HOST.pub
+
+	info "restricting permission of $HOME/.ssh and $HOME/.gnupg"
+	find $HOME/.ssh   -type d -print0 | xargs -0 chmod 0700 2> /dev/null
+	find $HOME/.ssh   -type f -print0 | xargs -0 chmod 0600 2> /dev/null
+	find $HOME/.gnupg -type d -print0 | xargs -0 chmod 0700 2> /dev/null
+	find $HOME/.gnupg -type f -print0 | xargs -0 chmod 0600 2> /dev/null
+}
+
+#------------------------------------------------------------------------------
+command:backup() {
+	local USER=$(whoami)
+	command:gpg-export-secret-key  > /var/backups/$USER.gpg.secret
+	command:gpg-export-public-key  > /var/backups/$USER.gpg.public
+	command:gpg-export-owner-trust > /var/backups/$USER.gpg.trust
+	command:ssh-export-secret-key  > /var/backups/$USER.ssh.secret
+	command:ssh-export-public-key  > /var/backups/$USER.ssh.public
+}
+
+#------------------------------------------------------------------------------
+command:identity() {
+	local USER=$(whoami)
+	local HOST=$(hostname -f | tr '[:upper:]' '[:lower:]')
+	echo $USER@$HOST
+}
+
+#------------------------------------------------------------------------------
+command:admin() {
+	test $EUID -eq 0 && return 0
+	if test -e /etc/sudoers.d/$USER; then
+		return 0;
+	else
+		debug "file /etc/sudoers.d/$USER does not exist"
+		return 1;
+	fi
+}
+
+#------------------------------------------------------------------------------
+command:root() {
+	test $EUID -eq 0
+}
+
+#------------------------------------------------------------------------------
+command:username() {
+	whoami
+}
+
+#------------------------------------------------------------------------------
+command:hostname() {
+	hostname -f | tr '[:upper:]' '[:lower:]'
+}
+
+#------------------------------------------------------------------------------
+command:nodename() {
+	hostname -s | tr '[:upper:]' '[:lower:]'
+}
+
+#------------------------------------------------------------------------------
+command:domainname() {
+	hostname -d | tr '[:upper:]' '[:lower:]'
+}
+
+#------------------------------------------------------------------------------
+command:create-user() {
+	local USERNAME=${1}
+	test -z "$USERNAME" && fatal "Please specify a user name" -1
+	if [ "$USERNAME" = "root" ]; then
+		local USERHOME=$(sudo -i sh -c 'echo $HOME')
+	elif [ "$USERNAME" = "srv" ]; then
+		local USERHOME=/srv
+		if [ -e /etc/subuid ]; then
+			echo "srv:200000:65536" | sudo tee -a /etc/subuid > /dev/null
+			sudo sort -u /etc/subuid -o /etc/subuid
+		fi
+		if [ -e /etc/subgid ]; then
+			echo "srv:200000:65536" | sudo tee -a /etc/subgid > /dev/null
+			sudo sort -u /etc/subuid -o /etc/subgid
+		fi
+	elif [ "$USERNAME" = "obj" ]; then
+		local USERHOME=/obj
+	else
+		local USERHOME=/var/lib/$USERNAME
+	fi
+
+	case $(command:platform) in
+		ubuntu|debian|alpine)
+			local GROUPNAME=users
+			if ! id -u $USERNAME > /dev/null 2> /dev/null; then
+				sudo adduser --system --home $USERHOME --shell /bin/bash --disabled-password --group $GROUPNAME $USERNAME
+			fi
+			local USERPATH=$USERHOME
+			;;
+		macos)
+			local GROUPNAME=staff
+			if [ ! -e /etc/synthetic.conf ]; then
+				sudo touch /etc/synthetic.conf
+				sudo chmod 0644 /etc/synthetic.conf
+				sudo chown root:wheel /etc/synthetic.conf
+			fi
+			if [ "$USERNAME" = "srv" ]; then
+				local USERPATH=/private/srv
+				if ! grep -q "^srv\tprivate/srv$" /etc/synthetic.conf; then
+					echo "srv\tprivate/srv" | sudo tee -a /etc/synthetic.conf
+					info "/etc/synthetic.conf changed - please reboot"
+				fi
+			elif [ "$USERNAME" = "obj" ]; then
+				local USERPATH=/private/obj
+				if ! grep -q "^obj\tprivate/obj$" /etc/synthetic.conf; then
+					echo "obj\tprivate/obj" | sudo tee -a /etc/synthetic.conf
+					info "/etc/synthetic.conf changed - please reboot"
+				fi
+			else
+				local USERPATH=$USERHOME
+			fi
+
+			if ! id -u $USERNAME > /dev/null 2> /dev/null; then
+				info "Enabling sshd ('Remote Login')"
+				sudo systemsetup -f -setremotelogin on
+				sudo dseditgroup -o create -q $GROUPNAME
+				local GID=$(dseditgroup -o read -q $GROUPNAME | grep -C 1 PrimaryGroupID | tail -1 | xargs)
+				sudo sysadminctl -addUser $USERNAME -admin -home $USERHOME -shell /bin/bash -GID $GID
+				sudo dseditgroup -o edit -q -a $USERNAME  -t user  $GROUPNAME
+				sudo dseditgroup -o edit -q -a $USERNAME  -t user  staff
+				sudo dseditgroup -o edit -q -a $GROUPNAME -t group com.apple.access_ssh
+			fi
+			;;
+		*)
+			fatal "Unsupported Environment" -1
+			;;
+	esac
+
+	sudo mkdir -p $USERPATH/.ssh
+	command:ssh-export-public-key | sudo tee -a $USERHOME/.ssh/authorized_keys > /dev/null
+	sudo sort -u $USERHOME/.ssh/authorized_keys -o $USERHOME/.ssh/authorized_keys
+	sudo chown -R $USERNAME:$GROUPNAME $USERPATH
+	sudo chmod -R o-rwx $USERPATH
+	sudo chmod -R g-rwx $USERPATH/.ssh
+	sudo chsh -s /bin/bash $USERNAME 2> /dev/null > /dev/null
+	command:insert $USERNAME@$(command:hostname)
+}
+
+#------------------------------------------------------------------------------
+command:delete-user() {
+	local USERNAME=${1};  test -z "$USERNAME"  && fatal "Please specify a user name"  -1
+	if [ $USERNAME != "root" ]; then
+		case $(command:platform) in
+			ubuntu|debian|alpine)
+				sudo deluser  $USERNAME
+				sudo delgroup $USERNAME
+				;;
+			macos)
+				sudo sysadminctl -deleteUser $USERNAME
+				;;
+			*)
+				fatal "Unsupported Environment" -1
+				;;
+		esac
+	fi
+}
+
+#------------------------------------------------------------------------------
+command:add-user() {
+	local USERNAME=${1};  test -z "$USERNAME"  && fatal "Please specify a user name"  -1
+	local GROUPNAME=${2}; test -z "$GROUPNAME" && fatal "Please specify a group name" -1
+	case $(command:platform) in
+		ubuntu|debian|alpine)
+			sudo adduser $USERNAME $GROUPNAME
+			;;
+		macos)
+			sudo dseditgroup -o edit -q -a $USERNAME  -t user  $GROUPNAME
+			;;
+		*)	
+			fatal "Unsupported Environment" -1
+			;;
+	esac
+}
+
+#------------------------------------------------------------------------------
+command:gpg-secret-keys() {
+	gpg --list-secret-keys --with-colons 2> /dev/null | grep uid:u | sed 's/.*<//g' | sed 's/>.*//g' | sort -u
+}
+
+#------------------------------------------------------------------------------
+command:gpg-public-keys() {
+	gpg --list-public-keys --with-colons 2> /dev/null | grep uid: | sed 's/.*<//g' | sed 's/>.*//g' | sort -u
+}
+
+#------------------------------------------------------------------------------
+command:gpg-encrypt() {
+	local TMPFILE=$(mktemp)
+	local ARGS=""
+	if [ $# -ne 0 ]; then 
+		for ACCOUNT in $@; do
+			ARGS="$ARGS --recipient $(command:gpg-fingerprint $ACCOUNT)"
+		done
+	else
+		for ACCOUNT in $(account list); do
+			ARGS="$ARGS --recipient $(command:gpg-fingerprint $ACCOUNT)"
+		done
+	fi
+
+	gpg --yes --encrypt --armor --quiet --trust-model always --output $TMPFILE $ARGS
+	local RESULT=$?
+	cat $TMPFILE
+	rm -f $TMPFILE
+	return $RESULT
+}
+
+#------------------------------------------------------------------------------
+command:gpg-decrypt() {
+	local TMPFILE=$(mktemp)
+	cat > $TMPFILE
+	gpg --yes --decrypt --armor --quiet $TMPFILE
+	local RESULT=$?
+	rm -f $TMPFILE
+	return $RESULT
+}
+
+#------------------------------------------------------------------------------
+command:gpg-export-secret-key() {
+	KEY=$1
+	if [ -z "$KEY" ]; then
+		gpg --armor --quiet --export-secret-key $(command:identity)
+	else
+		gpg --armor --quiet --export-secret-key ${KEY}
+	fi
+}
+
+#------------------------------------------------------------------------------
+command:gpg-export-public-key() {
+	local KEY=$1
+	if [ -z "$KEY" ]; then
+		gpg --armor --quiet --export $(command:identity)
+	elif [ -f ${SELF_CONFIG}/gpg/${KEY}.pub ]; then
+		cat ${SELF_CONFIG}/gpg/${KEY}.pub
+	else
+		gpg --armor --quiet --export ${KEY}
+	fi
+}
+
+#------------------------------------------------------------------------------
+command:gpg-fingerprints() {
+	gpg --batch --with-colons --fingerprint --list-keys | awk -F: '
+$1 == "fpr" { fpr = $10 }
+$1 == "uid" { print uid = $10, fpr }
+' | column -t | sed 's/.*<//g' | sed 's/>//g' | sort -u
+}
+
+#------------------------------------------------------------------------------
+command:gpg-fingerprint() {
+	if [[ $# -eq 0 ]]; then
+		command:gpg-fingerprints | awk "\$1 == \"$(command:identity)\" {  print \$2 }"
+	else
+		for KEY in $@; do
+			command:gpg-fingerprints | awk "\$1 == \"$KEY\" {  print \$2 }"
+		done
+	fi
+}
+
+#------------------------------------------------------------------------------
+command:gpg-export-owner-trust() {
+	gpg --export-ownertrust
+}
+
+#------------------------------------------------------------------------------
+command:gpg-import-public-key() {
+	local KEY=$1
+	test -z "$KEY" && fatal "please specify a key id"
+	cat | tee ${SELF_CONFIG}/gpg/${KEY}.pub > /dev/null
+	gpg --import ${SELF_CONFIG}/gpg/${KEY}.pub
+	gpg --no-tty --quick-sign-key $(command:gpg-fingerprint ${KEY})
+}
+
+#------------------------------------------------------------------------------
+command:gpg-import-key() {
+	gpg --import $@
+}
+
+#------------------------------------------------------------------------------
+command:gpg-import-owner-trust() {
+	gpg --import-ownertrust $@
+}
+
+#------------------------------------------------------------------------------
+command:gpg-delete-key() {
+	local KEY=$1
+	test -z "$KEY" && fatal "please specify a key id"
+	if command:gpg-secret-keys | grep -q "^$KEY$"; then
+		for FINGERPRINT in $(command:gpg-fingerprint $KEY); do
+			info "gpg --batch --yes --delete-secret-keys $FINGERPRINT # $KEY"
+			gpg --batch --yes --delete-secret-keys $FINGERPRINT
+		done
+	fi
+
+	if command:gpg-public-keys | grep -q "^$KEY$"; then
+		for FINGERPRINT in $(command:gpg-fingerprint $KEY); do
+			info "gpg --batch --yes --delete-key $FINGERPRINT # $KEY"
+			gpg --batch --yes --delete-key $FINGERPRINT
+		done
+	fi
+}
+
+#------------------------------------------------------------------------------
+command:ssh-export-secret-key() {
+	[ -f $HOME/.ssh/id_rsa ] && cat $HOME/.ssh/id_rsa
+}
+
+#------------------------------------------------------------------------------
+command:ssh-public-keys() {
+	{
+		[ -f $HOME/.ssh/authorized_keys ] && cat $HOME/.ssh/authorized_keys
+		[ -f $HOME/.ssh/id_rsa.pub ] && cat $HOME/.ssh/id_rsa.pub
+	} | sort -u | sed 's/.* //g'
+}
+
+#------------------------------------------------------------------------------
+command:ssh-export-public-key() {
+	local KEY=$1
+	if [ -z "$KEY" ]; then
+		cat $HOME/.ssh/id_rsa.pub
+	elif [ -f ${SELF_CONFIG}/ssh/${KEY}.pub ]; then
+		cat ${SELF_CONFIG}/ssh/${KEY}.pub
+	elif command:slaves | grep -q "^${KEY}$"; then
+		ssh $KEY account ssh-export-public-key
+	else
+		grep "$KEY$" $HOME/.ssh/authorized_keys | cat
+	fi
+}
+
+#------------------------------------------------------------------------------
+command:ssh-import-public-key() {
+	KEY=$1
+        test -z "$KEY" && fatal "please specify a key id"
+        cat | tee ${SELF_CONFIG}/ssh/${KEY}.pub > /dev/null
+
+	cat ${SELF_CONFIG}/ssh/${KEY}.pub | tee -a $HOME/.ssh/authorized_keys > /dev/null
+	sort -u $HOME/.ssh/authorized_keys -o $HOME/.ssh/authorized_keys
+}
+
+#------------------------------------------------------------------------------
+command:ssh-export-known-host() {
+	local KEY=$1
+	if [ -z "$KEY" ]; then
+		if [ -e /etc/ssh/ssh_host_rsa_key.pub ]; then
+			echo "$(command:hostname) $(cat /etc/ssh/ssh_host_rsa_key.pub)"
+		else
+			echo ""
+		fi
+	else
+		grep "^$KEY" $HOME/.ssh/known_hosts
+	fi
+}
+
+#------------------------------------------------------------------------------
+command:ssh-import-known-host() {
+	tee -a $HOME/.ssh/known_hosts > /dev/null
+	sort -u $HOME/.ssh/known_hosts -o $HOME/.ssh/known_hosts
+}
+
+#------------------------------------------------------------------------------
+command:insert() {
+	ACCOUNT=$(echo "$1" | tr [A-Z] [a-z])
+	[ -z $ACCOUNT ] && fatal "please specify an account" -1
+	USER_MAIL=$(git config --get user.email)
+	USER_NAME=$(git config --get user.name)
+	test -z "$USER_MAIL" && fatal "no local git user mail configured"
+	test -z "$USER_NAME" && fatal "no local git user name configured"
+
+	if command:online $ACCOUNT; then
+		ssh-copy-id -o "StrictHostKeyChecking=no" -o "IdentitiesOnly=yes" -o "BatchMode=yes" -o "ConnectTimeout=5" $ACCOUNT 2> /dev/null
+		if ssh -o "StrictHostKeyChecking=no" -o "IdentitiesOnly=yes" -o "BatchMode=yes" -o "ConnectTimeout=5" $ACCOUNT true; then
+			# FEAT-022: account is the foundation; the repo-sync of the
+			# scripts collection moves to a higher-level orchestration
+			# (e.g. `repo` or rpk's per-package release flow), not here.
+
+			if ssh $ACCOUNT test -x /usr/local/bin/account; then
+				ssh $ACCOUNT /usr/local/bin/account init
+				ssh $ACCOUNT /usr/local/bin/account ssh-export-public-key > ${SELF_CONFIG}/ssh/$ACCOUNT.pub
+				ssh $ACCOUNT /usr/local/bin/account gpg-export-public-key > ${SELF_CONFIG}/gpg/$ACCOUNT.pub
+			elif ssh $ACCOUNT test -x '~/.local/bin/account'; then
+				ssh $ACCOUNT '~/.local/bin/account' init
+				ssh $ACCOUNT '~/.local/bin/account' ssh-export-public-key > ${SELF_CONFIG}/ssh/$ACCOUNT.pub
+				ssh $ACCOUNT '~/.local/bin/account' gpg-export-public-key > ${SELF_CONFIG}/gpg/$ACCOUNT.pub
+			elif ssh $ACCOUNT which account > /dev/null; then
+				ssh $ACCOUNT account init
+        	        	ssh $ACCOUNT account ssh-export-public-key > ${SELF_CONFIG}/ssh/$ACCOUNT.pub
+				ssh $ACCOUNT account gpg-export-public-key > ${SELF_CONFIG}/gpg/$ACCOUNT.pub
+			else
+				
+				cp $(which account) /tmp/account                            || fatal "cp $(which account) /tmp/account - failed" -1
+				cp $(which repo)    /tmp/repo                               || fatal "cp $(which repo)    /tmp/repo    - failed" -1
+				cp $(which rpk)     /tmp/rpk                                || fatal "cp $(which repo)    /tmp/repo    - failed" -1
+				command:put /tmp/account $ACCOUNT                           || fatal "upload of /tmp/account - failed " -1
+				command:put /tmp/repo    $ACCOUNT                           || fatal "upload of /tmp/repo - failed " -1
+				command:put /tmp/rpk     $ACCOUNT                           || fatal "upload of /tmp/rpk - failed " -1
+
+				ssh $ACCOUNT /bin/bash -l /tmp/account init                 || fatal "ssh $ACCOUNT /tmp/account init - failed" -1
+				ssh $ACCOUNT /bin/bash -l /tmp/account ssh-export-public-key > ${SELF_CONFIG}/ssh/$ACCOUNT.pub
+				ssh $ACCOUNT /bin/bash -l /tmp/account gpg-export-public-key > ${SELF_CONFIG}/gpg/$ACCOUNT.pub
+
+				info "initializing basic script environment in $ACCOUNT"
+				ssh $ACCOUNT /bin/bash -l /tmp/repo stage scripts           || fatal "ssh $ACCOUNT /tmp/repo stage scripts - failed" -1
+				ssh $ACCOUNT /bin/bash -l /tmp/rpk upgrade                  || fatal "ssh $ACCOUNT /tmp/rpk upgrade - failed" -1
+				ssh $ACCOUNT /bin/bash -l /tmp/rpk package scripts          || fatal "ssh $ACCOUNT /tmp/rpk package scripts - failed" -1
+				ssh $ACCOUNT /bin/bash -l /tmp/rpk release scripts          || fatal "ssh $ACCOUNT /tmp/rpk release scripts - failed" -1
+
+				info "cleaning up..."
+				ssh $ACCOUNT rm -f /tmp/rpk     2> /dev/null
+				ssh $ACCOUNT rm -f /tmp/repo    2> /dev/null
+				ssh $ACCOUNT rm -f /tmp/account 2> /dev/null
+				rm -f /tmp/rpk
+				rm -f /tmp/repo
+				rm -f /tmp/account
+			fi
+			
+			info "signing gpg public key for $ACCOUNT"
+			command:gpg-export-public-key $ACCOUNT | gpg --import
+			gpg --quick-sign-key $(command:gpg-fingerprint ${ACCOUNT})	
+
+			echo $ACCOUNT | tee -a ${SELF_CONFIG}/slaves/$(command:identity) > /dev/null
+			sort -u ${SELF_CONFIG}/slaves/$(command:identity) -o ${SELF_CONFIG}/slaves/$(command:identity)
+		else
+			fatal "ssh-copy-id $ACCOUNT - failed"
+		fi
+	else
+		warn "can not register $ACCOUNT as the account is not online"
+	fi
+}
+
+#------------------------------------------------------------------------------
+command:remove() {
+	for ACCOUNT in $@; do
+		rm -f ${SELF_CONFIG}/ssh/$ACCOUNT.pub
+		rm -f ${SELF_CONFIG}/gpg/$ACCOUNT.pub
+	done
+}
+
+#------------------------------------------------------------------------------
+command:list() {
+	pushd ${SELF_CONFIG}/ssh > /dev/null
+	ls -1 | sed 's/.pub//g'
+	popd > /dev/null
+}
+
+#------------------------------------------------------------------------------
+command:has() {
+	test -z "$1" && fatal "please specify an account"
+	local ACCOUNT=$(echo "$1" | tr [A-Z] [a-z])
+	test -f ${SELF_CONFIG}/ssh/$ACCOUNT.pub || return -1
+	test -f ${SELF_CONFIG}/gpg/$ACCOUNT.pub || return -1
+	return 0
+}
+
+#------------------------------------------------------------------------------
+command:has-gpg-key() {
+	test -z "$1" && fatal "please specify an account"
+	local ACCOUNT=$(echo "$1" | tr [A-Z] [a-z])
+	test -f ${SELF_CONFIG}/gpg/$ACCOUNT.pub || return -1
+	return 0
+}
+
+#------------------------------------------------------------------------------
+command:has-ssh-key() {
+	test -z "$1" && fatal "please specify an account"
+	local ACCOUNT=$(echo "$1" | tr [A-Z] [a-z])
+	test -f ${SELF_CONFIG}/ssh/$ACCOUNT.pub || return -1
+	return 0
+}
+
+#------------------------------------------------------------------------------
+command:home() {
+	local ACCOUNT=$1
+	if [ -z "$ACCOUNT" ]; then
+		echo $HOME
+	elif command:has $ACCOUNT; then
+		if ssh $ACCOUNT which account > /dev/null; then
+			ssh $ACCOUNT account home
+			if [ $? -ne 0 ]; then
+				ssh $ACCOUNT pwd
+			fi
+		else
+			ssh $ACCOUNT pwd
+		fi
+	fi
+}
+
+#------------------------------------------------------------------------------
+command:cache-home() {
+	local ACCOUNT=$1
+	if [ -z "$ACCOUNT" ]; then
+		if [ "$EUID" -eq 0 ]; then
+			echo "/var/cache"
+		else
+			echo "${XDG_CACHE_HOME/#\~/$HOME}"
+		fi
+	elif command:has $ACCOUNT; then
+		if ssh $ACCOUNT which account > /dev/null; then
+			ssh $ACCOUNT account cache-home
+			if [ $? -ne 0 ]; then
+				echo "${XDG_CACHE_HOME/#\~/$(command:home $ACCOUNT)}"
+			fi
+		else
+			ssh $ACCOUNT /usr/local/bin/account cache-home
+			if [ $? -ne 0 ]; then
+				echo "${XDG_CACHE_HOME/#\~/$(command:home $ACCOUNT)}"
+			fi
+		fi
+	fi
+	return 0
+}
+
+#------------------------------------------------------------------------------
+command:config-home() {
+	local ACCOUNT=$1
+	if [ -z "$ACCOUNT" ]; then
+		if [ "$EUID" -eq 0 ]; then
+			echo "/etc"
+		else
+			echo "${XDG_CONFIG_HOME/#\~/$HOME}"
+		fi
+	elif command:has $ACCOUNT; then
+		if ssh $ACCOUNT which account > /dev/null; then
+			ssh $ACCOUNT account config-home
+			if [ $? -ne 0 ]; then
+				echo "${XDG_CONFIG_HOME/#\~/$(command:home $ACCOUNT)}"
+			fi
+		else
+			ssh $ACCOUNT /usr/local/bin/account config-home
+			if [ $? -ne 0 ]; then
+				echo "${XDG_CONFIG_HOME/#\~/$(command:home $ACCOUNT)}"
+			fi
+		fi
+	fi
+	return 0
+}
+
+#------------------------------------------------------------------------------
+command:data-home() {
+	local ACCOUNT=$1
+	if [ -z "$ACCOUNT" ]; then
+		if [ "$EUID" -eq 0 ]; then
+			echo "/var"
+		else
+			echo "${XDG_DATA_HOME/#\~/$HOME}"
+		fi
+	elif command:has $ACCOUNT; then
+		if ssh $ACCOUNT which account > /dev/null; then
+			ssh $ACCOUNT account data-home
+			if [ $? -ne 0 ]; then
+				echo "${XDG_DATA_HOME/#\~/$(command:home $ACCOUNT)}"
+			fi
+		else
+			ssh $ACCOUNT /usr/local/bin/account data-home
+			if [ $? -ne 0 ]; then
+				echo "${XDG_DATA_HOME/#\~/$(command:home $ACCOUNT)}"
+			fi
+		fi
+	fi
+	return 0
+}
+
+#------------------------------------------------------------------------------
+command:share-home() {
+	local ACCOUNT=$1
+	if [ -z "$ACCOUNT" ]; then
+		if [ "$EUID" -eq 0 ]; then
+			echo "/usr/local/share"
+		else
+			echo "${XDG_SHARE_HOME/#\~/$HOME}"
+		fi
+	elif command:has $ACCOUNT; then
+		if ssh $ACCOUNT which account > /dev/null; then
+			ssh $ACCOUNT account share-home
+			if [ $? -ne 0 ]; then
+				echo "${XDG_SHARE_HOME/#\~/$(command:home $ACCOUNT)}"
+			fi
+		else
+			ssh $ACCOUNT /usr/local/bin/account share-home
+			if [ $? -ne 0 ]; then
+				echo "${XDG_SHARE_HOME/#\~/$(command:home $ACCOUNT)}"
+			fi
+		fi
+	fi
+	return 0
+}
+
+#------------------------------------------------------------------------------
+command:source-home() {
+	local ACCOUNT=$1
+	if [ -z "$ACCOUNT" ]; then
+		if [ "$EUID" -eq 0 ]; then
+			echo "/usr/local/src"
+		else
+			echo "${XDG_SOURCE_HOME/#\~/$HOME}"
+		fi
+	elif command:has $ACCOUNT; then
+		if ssh $ACCOUNT which account > /dev/null; then
+			ssh $ACCOUNT account source-home
+			if [ $? -ne 0 ]; then
+				echo "${XDG_SOURCE_HOME/#\~/$(command:home $ACCOUNT)}"
+			fi
+		else
+			ssh $ACCOUNT /usr/local/bin/account source-home
+			if [ $? -ne 0 ]; then
+				echo "${XDG_SOURCE_HOME/#\~/$(command:home $ACCOUNT)}"
+			fi
+		fi
+	fi
+	return 0
+}
+
+#------------------------------------------------------------------------------
+command:backup-home() {
+	local ACCOUNT=$1
+	if [ -z "$ACCOUNT" ]; then
+		if [ "$EUID" -eq 0 ]; then
+			echo "/var/backups"
+		else
+			echo "${XDG_BACKUP_HOME/#\~/$HOME}"
+		fi
+	elif command:has $ACCOUNT; then
+		if ssh $ACCOUNT which account > /dev/null; then
+			ssh $ACCOUNT account backup-home
+			if [ $? -ne 0 ]; then
+				echo "${XDG_BACKUP_HOME/#\~/$(command:home $ACCOUNT)}"
+			fi
+		else
+			ssh $ACCOUNT /usr/local/bin/account backup-home
+			if [ $? -ne 0 ]; then
+				echo "${XDG_BACKUP_HOME/#\~/$(command:home $ACCOUNT)}"
+			fi
+		fi
+	fi
+	return 0
+}
+
+#------------------------------------------------------------------------------
+command:master() {
+	if [ -f $HOME/.ssh/authorized_keys ]; then
+		cat $HOME/.ssh/authorized_keys | sort -u | sed 's/.* //g'
+	fi
+}
+
+#------------------------------------------------------------------------------
+command:slaves() {
+	local ACCOUNT=$1
+	if [ -z "$ACCOUNT" ]; then
+		local ACCOUNT=$(command:identity)
+	fi
+
+	test -f ${SELF_CONFIG}/slaves/$ACCOUNT && cat ${SELF_CONFIG}/slaves/$ACCOUNT
+	return 0
+}
+
+#------------------------------------------------------------------------------
+command:online() {
+	if [ -z "$1" ]; then
+		for ACCOUNT in $(command:slaves); do
+			local ACCOUNT_HOST=${ACCOUNT#*@}
+			if $(fping -4 -q $ACCOUNT_HOST); then
+				if ssh -o "StrictHostKeyChecking=no" -o "IdentitiesOnly=yes" -o "BatchMode=yes" -o "ConnectTimeout=5" $ACCOUNT true; then
+					echo "$ACCOUNT"
+				fi
+			fi
+		done
+	else
+		ACCOUNT=$(echo "$1" | tr [A-Z] [a-z])
+		local ACCOUNT_HOST=${ACCOUNT#*@}
+		if fping -4 -q $ACCOUNT_HOST; then
+			if ssh -o "StrictHostKeyChecking=no" -o "IdentitiesOnly=yes" -o "BatchMode=yes" -o "ConnectTimeout=5" $ACCOUNT true; then
+				return 0
+			else
+				return -1
+			fi
+		else
+			return -2
+		fi
+	fi
+}
+
+#------------------------------------------------------------------------------
+command:status() {
+	for ACCOUNT in $(command:slaves); do
+		if command:slaves | grep $ACCOUNT; then
+			local SLAVE="X"
+		else
+			local SLAVE="-"
+		fi
+
+		if command:master | grep $ACCOUNT; then
+			local MASTER="X"
+		else
+			local MASTER="-"
+		fi
+		
+		echo -e "$ACCOUNT\t$MASTER\t$SLAVE\t$ONLINE"
+	done | column -ts $'\t'
+}
+
+#------------------------------------------------------------------------------
+command:run() {
+	if [[ ! -t 0 ]]; then
+		local DATA=$(cat)
+	fi
+
+	for ACCOUNT in $(command:slaves); do
+		info "$ACCOUNT - executing $@"
+		local ACCOUNT_HOST=${ACCOUNT#*@}
+		if $(fping -4 -q $ACCOUNT_HOST); then
+			if [ -z "$DATA" ]; then
+				ssh $ACCOUNT $@
+			else
+				echo "$DATA" | ssh $ACCOUNT $@
+			fi
+		else
+			warn "host ${ACCOUNT_HOST} not reachable"
+		fi
+	done
+	return 0
+}
+
+#------------------------------------------------------------------------------
+command:exe() {
+	if [ -z "$1" ]; then
+		local SCRIPT=$(cat)
+		for ACCOUNT in $(command:slaves); do
+			echo "$SCRIPT" | command:deploy $ACCOUNT
+		done
+	else
+		local ACCOUNT=$(echo "$1" | tr [A-Z] [a-z])
+		local ACCOUNT_HOST=${ACCOUNT#*@}
+		if $(fping -4 -q $ACCOUNT_HOST); then
+			eval SCRIPT_FILE=${XDG_CACHE_HOME}/$(tr -dc A-Za-z0-9 </dev/urandom | head -c 33)
+			cat > $SCRIPT_FILE
+			chmod +x $SCRIPT_FILE
+			scp -q $SCRIPT_FILE $ACCOUNT:/tmp/$(basename $SCRIPT_FILE) 2> /dev/null > /dev/null
+			if [ $? -eq 0 ]; then
+				debug "ssh $ACCOUNT /tmp/$(basename $SCRIPT_FILE)"
+				ssh -tt $ACCOUNT /tmp/$(basename $SCRIPT_FILE)
+				[ $? -eq 0 ] && ssh $ACCOUNT "rm /tmp/$(basename $SCRIPT_FILE)"
+				[ $? -eq 0 ] && rm -rf $SCRIPT_FILE
+				return $?
+			else
+				warn "$ACCOUNT - transfer of script file ${SCRIPT_FILE} failed"
+				rm -rf $SCRIPT_FILE
+				return $?
+			fi
+		else
+			warn "host ${ACCOUNT_HOST} not reachable"
+		fi
+	fi
+}
+
+#------------------------------------------------------------------------------
+command:sync() {
+	mkdir -p ${SELF_CONFIG}/slaves
+	for ACCOUNT in $(command:slaves); do
+		if command:online $ACCOUNT; then
+			echo $ACCOUNT | tee -a ${SELF_CONFIG}/slaves/$(command:identity) > /dev/null
+			if ssh $ACCOUNT test -x '~/.local/bin/account'; then
+				ssh $ACCOUNT '~/.local/bin/account' slaves | tee -a ${SELF_CONFIG}/slaves/$ACCOUNT > /dev/null
+			elif ssh $ACCOUNT test -x /usr/local/bin/account; then
+				ssh $ACCOUNT /usr/local/bin/account slaves | tee -a ${SELF_CONFIG}/slaves/$ACCOUNT > /dev/null
+			elif ssh $ACCOUNT which account > /dev/null; then
+				ssh $ACCOUNT account slaves                | tee -a ${SELF_CONFIG}/slaves/$ACCOUNT > /dev/null
+                        fi
+
+			if test -f ${SELF_CONFIG}/slaves/$ACCOUNT; then
+				sort -u ${SELF_CONFIG}/slaves/$ACCOUNT -o ${SELF_CONFIG}/slaves/$ACCOUNT
+			fi
+		fi
+	done
+
+	if test -f ${SELF_CONFIG}/slaves/$(command:identity); then
+		sort -u ${SELF_CONFIG}/slaves/$(command:identity) -o ${SELF_CONFIG}/slaves/$(command:identity)
+	fi
+}
+
+#------------------------------------------------------------------------------
+command:platform() {
+	local ACCOUNT=$1
+	if [ -z "${ACCOUNT}" ]; then
+		case $(uname -s) in
+			Linux*)
+				if test -f /etc/os-release; then
+					cat /etc/os-release | grep "^ID=" | sed "s/^ID=//g"
+				elif test -e /etc/synoinfo.conf; then
+					echo "synology"
+				else
+					echo "linux"
+				fi
+				;;
+			Darwin*)
+				echo "macos"
+				;;
+			*)
+				echo "unkown"
+				;;
+		esac
+	else
+		ssh $ACCOUNT /usr/local/bin/account platform
+	fi
+}
+
+#------------------------------------------------------------------------------
+command:hosts() {
+	for ACCOUNT in $(command:slaves); do
+		local ACCOUNT_HOST=${ACCOUNT#*@}
+		echo "${ACCOUNT_HOST}"
+	done | sort -u
+}
+
+#------------------------------------------------------------------------------
+# FEAT-044: canonical SSH endpoint resolver. Sibling tools
+# (secret, config, repo, …) call this instead of hand-assembling
+# `${ACCOUNT}:~/path` strings, so the endpoint format lives here.
+command:remote-url() {
+	local ACCOUNT=$1
+	local PURPOSE=$2
+	test -z "$ACCOUNT" && fatal "please specify an account" -1
+	case "$PURPOSE" in
+		password-store|"")
+			echo "${ACCOUNT}:~/.password-store"
+			;;
+		cluster-config)
+			echo "${ACCOUNT}:~/.config/cluster"
+			;;
+		bitcoin-wallet/*)
+			echo "${ACCOUNT}:~/.config/bitcoin/wallets/${PURPOSE#bitcoin-wallet/}"
+			;;
+		config/*)
+			echo "${ACCOUNT}:~/.config/${PURPOSE#config/}"
+			;;
+		secret/*)
+			echo "${ACCOUNT}:~/.config/secret/${PURPOSE#secret/}"
+			;;
+		*)
+			echo "${ACCOUNT}:~/.config/${PURPOSE}"
+			;;
+	esac
+}
+
+#------------------------------------------------------------------------------
+command:put() {
+	test -z "$1" && fatal "please specify a file name"
+	test -f "$1" || fatal "file $1 does not exist"
+
+	local FILE=$1
+	if [ -z "$2" ]; then
+		for ACCOUNT in $(command:slaves); do
+			command:put $FILE $ACCOUNT
+		done
+		return 0
+	else
+		local ACCOUNT=$(echo "$2" | tr [A-Z] [a-z])
+		local ACCOUNT_HOST=${ACCOUNT#*@}
+		if fping -4 -q $ACCOUNT_HOST; then
+			info "copying $FILE to $ACCOUNT:$FILE"
+			ssh $ACCOUNT mkdir -p $(dirname $FILE)
+			cat $FILE | ssh $ACCOUNT "tee $FILE > /dev/null" 2> /dev/null
+			ssh $ACCOUNT  chmod $(stat -c '%a' $FILE) $FILE 2> /dev/null
+		else
+			fatal "host $ACCOUNT_HOST not reachable"
+		fi
+	fi
+}
+
+#------------------------------------------------------------------------------
+command:set() {
+	test -z "$1" && fatal "please specify an file name"
+	local FILE=$1
+	if [ -z "$2" ]; then
+		local CONTENT=$(cat)
+		for ACCOUNT in $(command:slaves); do
+			echo "$CONTENT" | command:set $FILE $ACCOUNT
+		done
+		return 0
+	else
+		local CONTENT=$(cat)
+		local ACCOUNT=$(echo "$2" | tr [A-Z] [a-z])
+		local ACCOUNT_HOST=${ACCOUNT#*@}
+		if fping -4 -q $ACCOUNT_HOST; then
+			echo "$CONTENT" | ssh $ACCOUNT "tee $FILE > /dev/null"
+			return $?
+		fi
+		return 1
+	fi
+}
+
+#------------------------------------------------------------------------------
+command:get() {
+	test -z "$1" && fatal "please specify an file name"
+	local FILE=$1
+	if [ -z "$2" ]; then
+		TABLE="Account|Content\n"
+		for ACCOUNT in $(command:slaves); do
+			CONTENT=$(command:get $FILE $ACCOUNT)
+			TABLE+="$ACCOUNT|$CONTENT\n"
+		done
+		echo -e "$TABLE" | column -t -s '|'
+		return 0
+	else
+		local ACCOUNT=$(echo "$2" | tr [A-Z] [a-z])
+		local ACCOUNT_HOST=${ACCOUNT#*@}
+		if fping -4 -q $ACCOUNT_HOST; then
+			ssh $ACCOUNT cat $FILE 2> /dev/null
+			return $?
+		fi
+		return 1
+	fi
+}
+
+#------------------------------------------------------------------------------
+# Command-line processing
+if [[ $# == 0 ]]; then
+	command:help
+	exit
+fi
+
+#------------------------------------------------------------------------------
+# If this is a builtin command, execute it, otherwise fall through
+if has command $1; then
+	debug "executing command:$1 ${@:2}"
+	command:$1 "${@:2}" # array slice skipping first element
+	exit $?
+else
+	fatal "unknown command $1 ${@:2}"
+fi

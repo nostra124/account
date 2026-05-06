@@ -1,0 +1,37 @@
+# completion file for bash
+_account_complete_entries () {
+	COMPREPLY=()
+	local cur="${COMP_WORDS[COMP_CWORD]}"
+	local commands="help version identity gpg-secret-keys gpg-public-keys gpg-encrypt gpg-decrypt gpg-export-public-key ssh-public-keys ssh-export-public-key init list login exec tasks do set get"
+	if [[ $COMP_CWORD -gt 1 ]]; then
+		local lastarg="${COMP_WORDS[$COMP_CWORD-1]}"
+		case "${COMP_WORDS[1]}" in
+			gpg-encrypt)
+				COMPREPLY+=($(compgen -W "$(account list)" -- ${cur}))
+				;;
+			gpg-export-public-key)
+				COMPREPLY+=($(compgen -W "$(account gpg-public-keys)" -- ${cur}))
+				;;
+			ssh-export-public-key)
+				COMPREPLY+=($(compgen -W "$(account ssh-public-keys)" -- ${cur}))
+				;;
+			login)
+				COMPREPLY+=($(compgen -W "$(account list)" -- ${cur}))
+				;;
+			exec)
+				COMPREPLY+=($(compgen -W "$(account list)" -- ${cur}))
+				;;
+			do)
+				if [[ $COMP_CWORD -gt 2 ]]; then
+					COMPREPLY+=($(compgen -W "$(account list)" -- ${cur}))
+				else
+					COMPREPLY+=($(compgen -W "$(account tasks)" -- ${cur}))
+				fi
+				;;
+		esac
+	else
+		COMPREPLY+=($(compgen -W "${commands}" -- ${cur}))
+	fi
+}
+
+complete -o filenames -F _account_complete_entries account
