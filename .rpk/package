@@ -1,0 +1,9 @@
+#!/bin/sh
+# rpk package phase: build and stow this repo via the autoconf
+# umbrella (FEAT-191). rpk runs this after depends/* and before its
+# own packaging/stow step; deferring to `make install` keeps the
+# in-repo `./install` and the rpk-driven install on a single path.
+set -eu
+
+./configure --prefix="${PREFIX:-$HOME/.local}"
+exec make install
