@@ -10,7 +10,15 @@
 set -eu
 
 NAME=${1:?missing depends name}
-SCRIPT="/work/.rpk/depends/$NAME"
+
+# Prefer /work (container bind-mount) but fall back to the repo this
+# runner ships in, so the same script drives both the linux container
+# matrix (run.sh) and the macOS CI runner (no container).
+if [ -x "/work/.rpk/depends/$NAME" ]; then
+	SCRIPT="/work/.rpk/depends/$NAME"
+else
+	SCRIPT="$(cd "$(dirname "$0")/../.." && pwd)/.rpk/depends/$NAME"
+fi
 
 [ -x "$SCRIPT" ] || { echo "SIT: $SCRIPT not executable" >&2; exit 2; }
 
