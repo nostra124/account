@@ -4,13 +4,19 @@ set -eu
 
 command -v stow >/dev/null 2>&1 && exit 0
 
+# Common Homebrew locations on macOS
+BREW=""
+[ -x /opt/homebrew/bin/brew ] && BREW=/opt/homebrew/bin/brew
+[ -x /usr/local/bin/brew ] && BREW=/usr/local/bin/brew
+
 case "$(uname -s)" in
 	Darwin)
-		command -v brew >/dev/null 2>&1 || {
+		if [ -n "$BREW" ]; then
+			exec "$BREW" install stow >/dev/null
+		else
 			echo "depends/stow: brew not found" >&2
 			exit 1
-		}
-		exec brew install stow
+		fi
 		;;
 	Linux)
 		if command -v apt-get >/dev/null 2>&1; then

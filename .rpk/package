@@ -15,7 +15,7 @@ PACKAGE=$(rpk identity)
 VERSION=${1:-}
 [ -n "$VERSION" ] || VERSION=$(rpk versions | tail -1)
 
-COMMIT=$(rpk commit "$VERSION")
+COMMIT=$(rpk commit "$PACKAGE" "$VERSION")
 [ -n "$COMMIT" ] || die "version $VERSION has no commit hash"
 
 TARGET=$(rpk bundle "$(rpk type)")/$PACKAGE-$VERSION
