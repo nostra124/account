@@ -1,0 +1,17 @@
+#!/bin/sh
+# Verify dependency: rpk.
+#
+# rpk is the package manager itself. If this script is running,
+# rpk invoked it, so it must already be installed at the canonical
+# location. Asking rpk to install rpk is nonsense; we only assert
+# and bail out with a clear error if the invariant is violated.
+set -eu
+
+RPK="$HOME/.local/bin/rpk"
+
+[ -x "$RPK" ] || {
+	echo "depends/rpk: $RPK not found or not executable" >&2
+	exit 1
+}
+
+exit 0

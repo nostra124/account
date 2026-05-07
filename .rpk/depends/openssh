@@ -1,0 +1,35 @@
+#!/bin/sh
+# Install dependency: openssh (system tool).
+set -eu
+
+command -v ssh-keygen >/dev/null 2>&1 && exit 0
+
+case "$(uname -s)" in
+	Darwin)
+		command -v brew >/dev/null 2>&1 || {
+			echo "depends/openssh: brew not found" >&2
+			exit 1
+		}
+		exec brew install openssh
+		;;
+	Linux)
+		if command -v apt-get >/dev/null 2>&1; then
+			exec sudo apt-get install -y openssh-client
+		elif command -v dnf >/dev/null 2>&1; then
+			exec sudo dnf install -y openssh-clients
+		elif command -v yum >/dev/null 2>&1; then
+			exec sudo yum install -y openssh-clients
+		elif command -v pacman >/dev/null 2>&1; then
+			exec sudo pacman -S --noconfirm openssh
+		elif command -v apk >/dev/null 2>&1; then
+			exec sudo apk add openssh-client
+		else
+			echo "depends/openssh: no supported package manager" >&2
+			exit 1
+		fi
+		;;
+	*)
+		echo "depends/openssh: unsupported platform: $(uname -s)" >&2
+		exit 1
+		;;
+esac

@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: unit (linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install bats
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y bats
+      - name: Run unit tests
+        run: bats tests/unit/*.bats
+
+  sit-linux:
+    name: sit (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - ubuntu:latest
+          - debian:stable-slim
+          - fedora:latest
+          - archlinux:latest
+          - alpine:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run depends-script SIT in ${{ matrix.image }}
+        env:
+          SIT_ENGINE: docker
+          SIT_IMAGES: ${{ matrix.image }}
+        run: tests/sit/run.sh
+
+  sit-darwin:
+    name: sit (darwin)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run depends-script SIT on darwin
+        run: |
+          fail=0
+          for name in bash git gpg openssh stow rpk; do
+            echo "::group::depends/$name"
+            if ! sh tests/sit/runner.sh "$name"; then
+              echo "::error::depends/$name failed on darwin"
+              fail=$((fail + 1))
+            fi
+            echo "::endgroup::"
+          done
+          [ "$fail" -eq 0 ] || exit 1
