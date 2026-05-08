@@ -2,7 +2,16 @@
 # Install dependency: stow (system tool).
 set -eu
 
-command -v stow >/dev/null 2>&1 && exit 0
+# Check PATH and well-known locations for the binary.
+has_binary() {
+	command -v "$1" >/dev/null 2>&1 && return 0
+	[ -x "/opt/homebrew/bin/$1" ] && return 0
+	[ -x "/usr/local/bin/$1" ] && return 0
+	[ -x "/opt/local/bin/$1" ] && return 0
+	return 1
+}
+
+has_binary stow && exit 0
 
 # Common Homebrew locations on macOS
 BREW=""
