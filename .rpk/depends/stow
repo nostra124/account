@@ -14,8 +14,7 @@ case "$(uname -s)" in
 		if [ -n "$BREW" ]; then
 			rpk action "$BREW" install stow
 		else
-			echo "depends/stow: brew not found" >&2
-			exit 1
+			rpk fatal "depends/stow: brew not found"
 		fi
 		;;
 	Linux)
@@ -30,12 +29,10 @@ case "$(uname -s)" in
 		elif command -v apk >/dev/null 2>&1; then
 			rpk action sudo apk add stow
 		else
-			echo "depends/stow: no supported package manager" >&2
-			exit 1
+			rpk fatal "depends/stow: no supported package manager"
 		fi
 		;;
 	*)
-		echo "depends/stow: unsupported platform: $(uname -s)" >&2
-		exit 1
+		rpk fatal "depends/stow: unsupported platform: $(uname -s)"
 		;;
 esac
