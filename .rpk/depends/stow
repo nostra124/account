@@ -20,15 +20,15 @@ case "$(uname -s)" in
 		;;
 	Linux)
 		if command -v apt-get >/dev/null 2>&1; then
-			exec sudo apt-get install -y stow
+			rpk action sudo apt-get install -y stow
 		elif command -v dnf >/dev/null 2>&1; then
-			exec sudo dnf install -y stow
+			rpk action sudo dnf install -y stow
 		elif command -v yum >/dev/null 2>&1; then
-			exec sudo yum install -y stow
+			rpk action sudo yum install -y stow
 		elif command -v pacman >/dev/null 2>&1; then
-			exec sudo pacman -S --noconfirm stow
+			rpk action sudo pacman -S --noconfirm stow
 		elif command -v apk >/dev/null 2>&1; then
-			exec sudo apk add stow
+			rpk action sudo apk add stow
 		else
 			echo "depends/stow: no supported package manager" >&2
 			exit 1
