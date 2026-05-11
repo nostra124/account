@@ -2,7 +2,7 @@
 id: BUG-002
 type: bug
 priority: high
-status: open
+status: done
 ---
 
 # SIT default `SIT_NAMES` lists depends scripts that are not shipped
