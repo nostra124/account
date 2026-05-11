@@ -9,6 +9,32 @@ permissions:
   contents: read
 
 jobs:
+  # BUG-005: guard against the `unkown` typo (and other common
+  # misspellings) regressing into bin/account. Cheap grep step
+  # runs before the bats job so a typo PR fails fast.
+  lint:
+    name: lint (typos)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for known typos
+        run: |
+          if grep -nE '\bunkown\b' bin/account; then
+            echo "::error::found 'unkown' (should be 'unknown') in bin/account"
+            exit 1
+          fi
+      # BUG-004: .rpk/version must equal the latest entry in
+      # .rpk/versions (the TSV release ledger). Catches the case
+      # where a release bump updates one file but not the other.
+      - name: Check .rpk/version matches ledger head
+        run: |
+          version=$(cat .rpk/version)
+          ledger=$(tail -1 .rpk/versions | awk '{print $1}')
+          if [ "$version" != "$ledger" ]; then
+            echo "::error::.rpk/version ($version) != .rpk/versions head ($ledger)"
+            exit 1
+          fi
+
   unit:
     name: unit (linux)
     runs-on: ubuntu-latest

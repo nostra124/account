@@ -2,7 +2,7 @@
 id: BUG-003
 type: bug
 priority: medium
-status: open
+status: done
 ---
 
 # `gpg-encrypt` calls bare `account list` instead of `command:list`

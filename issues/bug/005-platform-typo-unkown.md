@@ -2,7 +2,7 @@
 id: BUG-005
 type: bug
 priority: low
-status: open
+status: done
 ---
 
 # `command:platform` fallback branch outputs literal "unkown"

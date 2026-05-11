@@ -2,7 +2,7 @@
 id: BUG-004
 type: bug
 priority: low
-status: open
+status: done
 ---
 
 # `.rpk/version` drifts from `.rpk/versions` ledger

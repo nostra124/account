@@ -3,7 +3,7 @@ id: ROADMAP-1.3.0
 type: roadmap
 version: 1.3.0
 priority: medium
-status: open
+status: done
 ---
 
 # Release 1.3.0 — Runtime correctness
@@ -20,19 +20,19 @@ Depends on: ROADMAP-1.1.0 (stable CI baseline required first).
 
 | ID | Type | Priority | Title | Status |
 |----|------|----------|-------|--------|
-| [BUG-003](./bug/003-gpg-encrypt-bare-account-call.md) | bug | medium | `gpg-encrypt` calls bare `account list` instead of `command:list` | open |
-| [BUG-005](./bug/005-platform-typo-unkown.md) | bug | low | `command:platform` fallback outputs `"unkown"` (spelling typo) | open |
-| [BUG-004](./bug/004-version-file-drifts-from-ledger.md) | bug | low | `.rpk/version` drifts from `.rpk/versions` ledger | open |
+| [BUG-003](./bug/003-gpg-encrypt-bare-account-call.md) | bug | medium | `gpg-encrypt` calls bare `account list` instead of `command:list` | done |
+| [BUG-005](./bug/005-platform-typo-unkown.md) | bug | low | `command:platform` fallback outputs `"unkown"` (spelling typo) | done |
+| [BUG-004](./bug/004-version-file-drifts-from-ledger.md) | bug | low | `.rpk/version` drifts from `.rpk/versions` ledger | done |
 
 ## Delivery notes
 
-- **BUG-003** is a one-token substitution (`$(account list)` →
-  `$(command:list)`). Verify no other bare self-calls remain with:
-  `grep -n '\baccount\b' bin/account | grep -v '^#' | grep -v ACCOUNT`
-- **BUG-005** is a one-word spelling fix. Pair it with a `grep`
-  lint step in CI so it cannot regress silently.
-- **BUG-004** requires a human decision before touching files: is
-  `1.0.2` the intended current version, or was the ledger entry
-  premature? Inspect the git log around commit `5ff88ff` to decide,
-  then either update `.rpk/version` to `1.0.2` or trim the ledger
-  entry.
+- **BUG-003** done — `$(account list)` replaced with
+  `$(command:list)` at `bin/account:474`. Verified no remaining
+  bare self-calls via `grep -nE '\$\(account[[:space:]]' bin/account`.
+- **BUG-005** done — `unkown` corrected to `unknown` in the
+  `command:platform` fallback. A `lint (typos)` CI job greps for
+  the misspelling so it cannot regress silently.
+- **BUG-004** done — git log of commit `5ff88ff` showed the bump
+  to `1.0.2` updated `.rpk/versions` but not `.rpk/version`; the
+  latter is now corrected to `1.0.2`. A CI step asserts the two
+  files agree on every PR.

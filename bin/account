@@ -471,7 +471,7 @@ command:gpg-encrypt() {
 			ARGS="$ARGS --recipient $(command:gpg-fingerprint $ACCOUNT)"
 		done
 	else
-		for ACCOUNT in $(account list); do
+		for ACCOUNT in $(command:list); do
 			ARGS="$ARGS --recipient $(command:gpg-fingerprint $ACCOUNT)"
 		done
 	fi
@@ -1071,7 +1071,7 @@ command:platform() {
 				echo "macos"
 				;;
 			*)
-				echo "unkown"
+				echo "unknown"
 				;;
 		esac
 	else
