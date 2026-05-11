@@ -75,8 +75,11 @@ teardown() {
 }
 
 @test "unknown subcommand exits non-zero with fatal message" {
+	# Unknown-command dispatcher uses `fatal "msg"` (no -1) → exit 1.
+	# See FEAT-211 note before the "Early-validation error paths"
+	# section for the convention.
 	run "$ACCOUNT_BIN" definitely-not-a-real-subcommand
-	[ "$status" -ne 0 ]
+	[ "$status" -eq 1 ]
 	[[ "$output" == *"fatal"* ]]
 	[[ "$output" == *"unknown command"* ]]
 }
@@ -136,6 +139,12 @@ teardown() {
 	run "$ACCOUNT_BIN" identity
 	[ "$status" -eq 0 ]
 	[ "$output" = "$(whoami)@$(hostname -f | tr '[:upper:]' '[:lower:]')" ]
+}
+
+@test "domainname returns lowercased domain part" {
+	run "$ACCOUNT_BIN" domainname
+	[ "$status" -eq 0 ]
+	[ "$output" = "$(hostname -d | tr '[:upper:]' '[:lower:]')" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -255,8 +264,9 @@ teardown() {
 }
 
 @test "remote-url without account exits non-zero" {
+	# remote-url uses `fatal "msg" -1` → bash truncates to exit 255.
 	run "$ACCOUNT_BIN" remote-url
-	[ "$status" -ne 0 ]
+	[ "$status" -eq 255 ]
 	[[ "$output" == *"please specify an account"* ]]
 }
 
@@ -308,7 +318,7 @@ teardown() {
 
 @test "has without account argument exits non-zero with fatal" {
 	run "$ACCOUNT_BIN" has
-	[ "$status" -ne 0 ]
+	[ "$status" -eq 1 ]
 	[[ "$output" == *"please specify an account"* ]]
 }
 
@@ -342,6 +352,43 @@ teardown() {
 	[ "$status" -eq 0 ]
 }
 
+@test "remove accepts multiple accounts in one call" {
+	touch "$SELF_CONFIG/ssh/alice@example.com.pub"
+	touch "$SELF_CONFIG/gpg/alice@example.com.pub"
+	touch "$SELF_CONFIG/ssh/bob@example.com.pub"
+	touch "$SELF_CONFIG/gpg/bob@example.com.pub"
+	run "$ACCOUNT_BIN" remove alice@example.com bob@example.com
+	[ "$status" -eq 0 ]
+	[ ! -f "$SELF_CONFIG/ssh/alice@example.com.pub" ]
+	[ ! -f "$SELF_CONFIG/gpg/alice@example.com.pub" ]
+	[ ! -f "$SELF_CONFIG/ssh/bob@example.com.pub" ]
+	[ ! -f "$SELF_CONFIG/gpg/bob@example.com.pub" ]
+}
+
+# ---------------------------------------------------------------------------
+# Cached key export (file-backed, no external gpg/ssh call)
+# ---------------------------------------------------------------------------
+
+@test "ssh-export-public-key <key> returns cached key file" {
+	echo "ssh-rsa AAAA alice@example.com" \
+		> "$SELF_CONFIG/ssh/alice@example.com.pub"
+	run "$ACCOUNT_BIN" ssh-export-public-key alice@example.com
+	[ "$status" -eq 0 ]
+	[ "$output" = "ssh-rsa AAAA alice@example.com" ]
+}
+
+@test "gpg-export-public-key <key> returns cached key file" {
+	cat > "$SELF_CONFIG/gpg/alice@example.com.pub" <<-EOF
+		-----BEGIN PGP PUBLIC KEY BLOCK-----
+		stub-payload
+		-----END PGP PUBLIC KEY BLOCK-----
+	EOF
+	run "$ACCOUNT_BIN" gpg-export-public-key alice@example.com
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"BEGIN PGP PUBLIC KEY BLOCK"* ]]
+	[[ "$output" == *"stub-payload"* ]]
+}
+
 # ---------------------------------------------------------------------------
 # Slaves / master / hosts
 # ---------------------------------------------------------------------------
@@ -358,6 +405,18 @@ teardown() {
 	run "$ACCOUNT_BIN" master
 	[ "$status" -eq 0 ]
 	[[ "$output" == *"bob@example.com"* ]]
+}
+
+# `sed 's/.* //g'` strips everything up to the last space. When the
+# key line has no comment, the entire line collapses to itself (no
+# space to anchor on); pin that behaviour so a future change to the
+# parsing logic surfaces here.
+@test "master with no-comment key line preserves the whole line" {
+	mkdir -p "$HOME/.ssh"
+	echo "ssh-rsa-no-spaces-here" > "$HOME/.ssh/authorized_keys"
+	run "$ACCOUNT_BIN" master
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"ssh-rsa-no-spaces-here"* ]]
 }
 
 @test "slaves returns contents of identity's slaves file" {
@@ -383,6 +442,20 @@ teardown() {
 	[ -z "$output" ]
 }
 
+# FEAT-214: `command:slaves` does NOT lowercase its argument while
+# `command:has` does. Pin the asymmetry so any future change is
+# deliberate. Resolution chosen: document, don't fix — slaves
+# filenames are opaque identifiers passed verbatim from
+# `command:identity` (which already lowercases via `hostname -f |
+# tr '[:upper:]' '[:lower:]'`). Callers should always pass
+# lowercase.
+@test "slaves is case-sensitive (unlike has, FEAT-214)" {
+	echo "carol@example.com" > "$SELF_CONFIG/slaves/alice@example.com"
+	run "$ACCOUNT_BIN" slaves Alice@example.com
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+}
+
 @test "hosts derives unique hostnames from slaves" {
 	identity="$($ACCOUNT_BIN identity)"
 	cat > "$SELF_CONFIG/slaves/$identity" <<-EOF
@@ -397,6 +470,27 @@ teardown() {
 }
 
 # ---------------------------------------------------------------------------
+# ssh-export-known-host — no-arg, no-key fallback
+# ---------------------------------------------------------------------------
+
+# When /etc/ssh/ssh_host_rsa_key.pub doesn't exist, the no-arg form
+# emits an empty line and exits 0. Pin the contract for callers
+# that pipe the output downstream.
+@test "ssh-export-known-host (no arg) returns empty when host key absent" {
+	# We cannot easily mask /etc/ssh from bin/account, but on a
+	# host where the file does exist, the output begins with the
+	# hostname rather than being empty. The test asserts only
+	# success + a defined output shape.
+	run "$ACCOUNT_BIN" ssh-export-known-host
+	[ "$status" -eq 0 ]
+	if [ -e /etc/ssh/ssh_host_rsa_key.pub ]; then
+		[[ "$output" == *"$(hostname -f | tr '[:upper:]' '[:lower:]')"* ]]
+	else
+		[ -z "$output" ]
+	fi
+}
+
+# ---------------------------------------------------------------------------
 # Platform detection (local form — reads /etc/os-release or uname)
 # ---------------------------------------------------------------------------
 
@@ -404,6 +498,14 @@ teardown() {
 	run "$ACCOUNT_BIN" platform
 	[ "$status" -eq 0 ]
 	[ -n "$output" ]
+}
+
+# BUG-005 regression guard: the fallback branch outputs `unknown`
+# (correctly spelled) — caught by `lint (typos)` in CI, but pinned
+# here for local runs too.
+@test "platform output never contains the 'unkown' typo" {
+	run "$ACCOUNT_BIN" platform
+	[[ "$output" != *"unkown"* ]]
 }
 
 # ---------------------------------------------------------------------------
@@ -429,76 +531,138 @@ teardown() {
 
 # ---------------------------------------------------------------------------
 # Early-validation error paths (no external calls reached)
+#
+# FEAT-211: fatal exit codes follow two conventions in bin/account:
+#   - `fatal "msg"`    → exit 1   (default in fatal helper)
+#   - `fatal "msg" -1` → exit 255 (bash truncates -1 to 8-bit)
+# Each test below asserts the exact expected status so any future
+# normalisation (e.g. dropping the `-1` arg) surfaces here.
 # ---------------------------------------------------------------------------
 
 @test "create-user without name exits fatal" {
 	run "$ACCOUNT_BIN" create-user
-	[ "$status" -ne 0 ]
+	[ "$status" -eq 255 ]   # fatal "msg" -1
 	[[ "$output" == *"Please specify a user name"* ]]
 }
 
 @test "delete-user without name exits fatal" {
 	run "$ACCOUNT_BIN" delete-user
-	[ "$status" -ne 0 ]
+	[ "$status" -eq 255 ]   # fatal "msg" -1
 	[[ "$output" == *"Please specify a user name"* ]]
 }
 
 @test "add-user without name exits fatal" {
 	run "$ACCOUNT_BIN" add-user
-	[ "$status" -ne 0 ]
+	[ "$status" -eq 255 ]   # fatal "msg" -1
 	[[ "$output" == *"Please specify a user name"* ]]
 }
 
 @test "add-user with name but no group exits fatal" {
 	run "$ACCOUNT_BIN" add-user alice
-	[ "$status" -ne 0 ]
+	[ "$status" -eq 255 ]   # fatal "msg" -1
 	[[ "$output" == *"Please specify a group name"* ]]
 }
 
 @test "gpg-import-public-key without key id exits non-zero" {
 	run "$ACCOUNT_BIN" gpg-import-public-key
-	[ "$status" -ne 0 ]
+	[ "$status" -eq 1 ]     # fatal "msg" (no -1)
 	[[ "$output" == *"please specify a key id"* ]]
 }
 
 @test "gpg-delete-key without key id exits non-zero" {
 	run "$ACCOUNT_BIN" gpg-delete-key
-	[ "$status" -ne 0 ]
+	[ "$status" -eq 1 ]     # fatal "msg" (no -1)
 	[[ "$output" == *"please specify a key id"* ]]
 }
 
 @test "ssh-import-public-key without key id exits non-zero" {
 	run "$ACCOUNT_BIN" ssh-import-public-key
-	[ "$status" -ne 0 ]
+	[ "$status" -eq 1 ]     # fatal "msg" (no -1)
 	[[ "$output" == *"please specify a key id"* ]]
 }
 
 @test "insert without account exits fatal" {
 	run "$ACCOUNT_BIN" insert
-	[ "$status" -ne 0 ]
+	[ "$status" -eq 255 ]   # fatal "msg" -1
 	[[ "$output" == *"please specify an account"* ]]
 }
 
 @test "put without filename exits non-zero" {
 	run "$ACCOUNT_BIN" put
-	[ "$status" -ne 0 ]
+	[ "$status" -eq 1 ]     # fatal "msg" (no -1)
 	[[ "$output" == *"please specify a file"* ]]
 }
 
 @test "put with non-existent file exits non-zero" {
 	run "$ACCOUNT_BIN" put /nonexistent/path/to/file alice@example.com
-	[ "$status" -ne 0 ]
+	[ "$status" -eq 1 ]     # fatal "msg" (no -1)
 	[[ "$output" == *"does not exist"* ]]
 }
 
 @test "set without filename exits non-zero" {
 	run "$ACCOUNT_BIN" set
-	[ "$status" -ne 0 ]
+	[ "$status" -eq 1 ]     # fatal "msg" (no -1)
 	[[ "$output" == *"please specify"* ]]
 }
 
 @test "get without filename exits non-zero" {
 	run "$ACCOUNT_BIN" get
-	[ "$status" -ne 0 ]
+	[ "$status" -eq 1 ]     # fatal "msg" (no -1)
 	[[ "$output" == *"please specify"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# FEAT-210: import-key happy paths (registry-write to $SELF_CONFIG).
+# Sandbox-safe; the gpg branch tolerates the post-write `gpg --import`
+# failing on stub key material since the assertion is on the file write.
+# ---------------------------------------------------------------------------
+
+@test "ssh-import-public-key writes the piped key to SELF_CONFIG/ssh/" {
+	mkdir -p "$HOME/.ssh"
+	echo "ssh-rsa AAAA alice@example.com" \
+		| "$ACCOUNT_BIN" ssh-import-public-key alice@example.com
+	[ -f "$SELF_CONFIG/ssh/alice@example.com.pub" ]
+	grep -q "ssh-rsa AAAA" "$SELF_CONFIG/ssh/alice@example.com.pub"
+}
+
+@test "ssh-import-public-key appends to authorized_keys" {
+	mkdir -p "$HOME/.ssh"
+	echo "ssh-rsa AAAA alice@example.com" \
+		| "$ACCOUNT_BIN" ssh-import-public-key alice@example.com
+	grep -q "ssh-rsa AAAA" "$HOME/.ssh/authorized_keys"
+}
+
+@test "gpg-import-public-key writes the piped key to SELF_CONFIG/gpg/" {
+	export GNUPGHOME="$(mktemp -d "$BATS_TMPDIR/gnupg.XXXXXX")"
+	# gpg --import on the stub payload will fail, but the file
+	# write happens before that call. `|| true` accepts the
+	# downstream failure; we only assert the registry-write step.
+	echo "-----BEGIN PGP PUBLIC KEY BLOCK-----" \
+		| "$ACCOUNT_BIN" gpg-import-public-key alice@example.com \
+		2>/dev/null || true
+	[ -f "$SELF_CONFIG/gpg/alice@example.com.pub" ]
+	grep -q "BEGIN PGP PUBLIC KEY BLOCK" \
+		"$SELF_CONFIG/gpg/alice@example.com.pub"
+	rm -rf "$GNUPGHOME"
+}
+
+# ---------------------------------------------------------------------------
+# FEAT-213: global flags.
+# The getopts loop in bin/account accepts -d (debug) and -q (quiet);
+# both should be tolerated before any subcommand without changing
+# the subcommand's stdout output.
+# ---------------------------------------------------------------------------
+
+@test "-q flag is accepted and version still prints" {
+	run "$ACCOUNT_BIN" -q version
+	[ "$status" -eq 0 ]
+	[ -n "$output" ]
+}
+
+@test "-d flag is accepted and version still prints" {
+	run "$ACCOUNT_BIN" -d version
+	[ "$status" -eq 0 ]
+	# version output is mixed with set -vx trace under -d; the
+	# version string still appears somewhere in $output.
+	[[ "$output" == *"$("$ACCOUNT_BIN" version)"* ]]
 }

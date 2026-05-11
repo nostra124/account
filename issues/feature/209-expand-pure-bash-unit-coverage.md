@@ -2,7 +2,7 @@
 id: FEAT-209
 type: feature
 priority: medium
-status: open
+status: done
 ---
 
 # Expand pure-bash unit coverage: missing subcommands and edge cases

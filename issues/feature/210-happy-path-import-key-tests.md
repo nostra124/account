@@ -2,7 +2,7 @@
 id: FEAT-210
 type: feature
 priority: medium
-status: open
+status: done
 ---
 
 # Add happy-path tests for `ssh-import-public-key` and `gpg-import-public-key`

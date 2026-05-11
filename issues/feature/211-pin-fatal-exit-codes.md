@@ -2,7 +2,7 @@
 id: FEAT-211
 type: feature
 priority: low
-status: open
+status: done
 ---
 
 # Pin `fatal` exit codes in unit tests: distinguish status 1 from 255

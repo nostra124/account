@@ -2,7 +2,7 @@
 id: FEAT-213
 type: feature
 priority: low
-status: open
+status: done
 ---
 
 # Add unit tests for the `-d` (debug) and `-q` (quiet) global CLI flags

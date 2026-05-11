@@ -2,7 +2,7 @@
 id: FEAT-214
 type: feature
 priority: low
-status: open
+status: done
 ---
 
 # Pin `slaves` case-insensitivity asymmetry: test or fix the inconsistency
