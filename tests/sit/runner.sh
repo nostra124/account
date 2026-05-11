@@ -44,11 +44,24 @@ fi
 # All other depends scripts call sudo. Most container images run as
 # root with no sudo binary; shim it so the install path executes
 # without requiring the image to ship sudo.
+#
+# FEAT-215: refuse to write the shim outside a container. Without
+# this guard, running `sudo sh tests/sit/runner.sh <name>` on a
+# workstation whose `sudo` happens to be missing from PATH would
+# silently overwrite /usr/local/bin/sudo with a no-op. Containers
+# are recognised by /.dockerenv (docker / podman with the compat
+# flag) or by SIT_IN_CONTAINER=1 (set by tests/sit/run.sh when it
+# invokes the inner runner).
 if ! command -v sudo >/dev/null 2>&1; then
 	[ "$(id -u)" -eq 0 ] || {
 		echo "SIT: sudo missing and not root; cannot proceed" >&2
 		exit 2
 	}
+	if [ ! -f /.dockerenv ] && [ "${SIT_IN_CONTAINER:-0}" != "1" ]; then
+		echo "SIT: refusing to install sudo shim outside a container" \
+		     "(set SIT_IN_CONTAINER=1 to override)" >&2
+		exit 2
+	fi
 	cat > /usr/local/bin/sudo <<'SUDO'
 #!/bin/sh
 exec "$@"

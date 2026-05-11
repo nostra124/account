@@ -2,7 +2,7 @@
 id: FEAT-215
 type: feature
 priority: low
-status: open
+status: done
 ---
 
 # Harden SIT runner sudo shim against accidental non-container execution
