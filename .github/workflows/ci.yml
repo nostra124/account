@@ -37,6 +37,20 @@ jobs:
       - name: Run unit tests as root
         run: sudo --preserve-env=PATH bats tests/unit/*.bats
 
+  # FEAT-212: exercise the pure-bash subset of bin/account on a
+  # Darwin kernel. Catches GNU vs BSD utility differences (e.g.
+  # `stat -c` vs `stat -f`, `tr` collation classes) before they
+  # surface on a user's machine.
+  unit-macos:
+    name: unit (macos)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install bats
+        run: brew install bats-core
+      - name: Run unit tests
+        run: bats tests/unit/*.bats
+
   sit-linux:
     name: sit (${{ matrix.image }})
     runs-on: ubuntu-latest

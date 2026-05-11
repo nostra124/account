@@ -19,7 +19,7 @@ tests silently never run.
 |----|------|----------|-------|--------|
 | [BUG-002](./bug/002-sit-names-missing-depends-scripts.md) | bug | high | SIT `SIT_NAMES` lists depends scripts not shipped (`bash git stow`) | done |
 | [FEAT-208](./feature/208-fix-euid0-sandbox-bypass.md) | feature | medium | Fix EUID==0 sandbox bypass: stop skipping 8 unit tests under root | done |
-| [FEAT-212](./feature/212-unit-tests-macos-ci.md) | feature | medium | Run unit tests on `macos-latest` in CI | open |
+| [FEAT-212](./feature/212-unit-tests-macos-ci.md) | feature | medium | Run unit tests on `macos-latest` in CI | done |
 | [FEAT-215](./feature/215-harden-sit-sudo-shim.md) | feature | low | Harden SIT runner sudo shim against non-container execution | open |
 
 ## Delivery notes
@@ -31,8 +31,9 @@ tests silently never run.
   `setup()`, `require_non_root` is gone, and a new `unit (linux,
   root)` CI job exercises the path. XDG-home tests now assert both
   the root and non-root branches so both code paths are pinned.
-- **FEAT-212** may surface GNU vs BSD portability issues (e.g.
-  `stat -c` vs `stat -f`). File those as follow-ups; do not block
-  the release on them.
+- **FEAT-212** is done — added `unit-macos` job (`runs-on:
+  macos-latest`, `brew install bats-core`). If the first run
+  surfaces GNU vs BSD utility differences in `bin/account`, file
+  them as follow-up bugs rather than reverting the job.
 - **FEAT-215** is a safety net. Land alongside FEAT-212 since both
   touch CI matrices.

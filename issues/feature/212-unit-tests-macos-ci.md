@@ -2,7 +2,7 @@
 id: FEAT-212
 type: feature
 priority: medium
-status: open
+status: done
 ---
 
 # Run unit tests on `macos-latest` in CI
