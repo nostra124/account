@@ -21,6 +21,22 @@ jobs:
       - name: Run unit tests
         run: bats tests/unit/*.bats
 
+  # FEAT-208: confirm the ACCOUNT_HOME_OVERRIDE path keeps the
+  # sandboxed $HOME intact when bin/account runs under EUID==0.
+  # Without this job, the 8 affected tests would only ever run as
+  # the non-root GitHub Actions user.
+  unit-root:
+    name: unit (linux, root)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install bats
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y bats
+      - name: Run unit tests as root
+        run: sudo --preserve-env=PATH bats tests/unit/*.bats
+
   sit-linux:
     name: sit (${{ matrix.image }})
     runs-on: ubuntu-latest

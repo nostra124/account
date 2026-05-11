@@ -63,7 +63,7 @@ done
 : ${EUID:=$(id -u)}
 : ${USER:=$(id -u -n)}
 
-if [ "$EUID" -eq 0 ]; then
+if [ "$EUID" -eq 0 ] && [ -z "$ACCOUNT_HOME_OVERRIDE" ]; then
 	USER=root
 	HOME=$(sudo -i sh -c 'echo $HOME')
 fi

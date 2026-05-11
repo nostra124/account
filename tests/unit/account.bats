@@ -36,17 +36,14 @@ setup() {
 	export XDG_SOURCE_HOME="$HOME/.local/src"
 	export XDG_BACKUP_HOME="$HOME/backups"
 	export SELF_QUIET=1
+	# FEAT-208: tell bin/account to honour the sandboxed $HOME even
+	# under EUID==0 instead of re-deriving it via `sudo -i`. Without
+	# this, 8 tests would have to `skip` whenever the suite runs
+	# under root (container CI, devcontainers).
+	export ACCOUNT_HOME_OVERRIDE=1
 	export ACCOUNT_BIN="$BATS_TEST_DIRNAME/../../bin/account"
 	SELF_CONFIG="$XDG_CONFIG_HOME/account"
 	mkdir -p "$SELF_CONFIG/ssh" "$SELF_CONFIG/gpg" "$SELF_CONFIG/slaves"
-}
-
-# bin/account re-derives HOME from `sudo -i sh -c 'echo $HOME'` when
-# EUID==0, which defeats the per-test $HOME sandbox. Tests that depend on
-# the sandboxed HOME (XDG-home resolvers and authorized_keys reads) skip
-# under root; CI runs as a regular user where they execute.
-require_non_root() {
-	[ "$EUID" -ne 0 ] || skip "EUID==0 re-derives HOME via sudo -i; sandbox is bypassed"
 }
 
 teardown() {
@@ -142,56 +139,78 @@ teardown() {
 }
 
 # ---------------------------------------------------------------------------
-# XDG home resolvers (no-arg form: pure envvar passthrough)
+# XDG home resolvers (no-arg form).
+#
+# Under EUID==0, bin/account substitutes system paths (/var/cache,
+# /etc, /var, /usr/local/share, /usr/local/src, /var/backups) instead
+# of the XDG envvars. Each test asserts both branches so the suite
+# pins behaviour under root and non-root identically.
 # ---------------------------------------------------------------------------
 
 @test "home (no arg) returns \$HOME" {
-	require_non_root
 	run "$ACCOUNT_BIN" home
 	[ "$status" -eq 0 ]
 	[ "$output" = "$HOME" ]
 }
 
 @test "cache-home (no arg) honours XDG_CACHE_HOME" {
-	require_non_root
 	run "$ACCOUNT_BIN" cache-home
 	[ "$status" -eq 0 ]
-	[ "$output" = "$XDG_CACHE_HOME" ]
+	if [ "$EUID" -eq 0 ]; then
+		[ "$output" = "/var/cache" ]
+	else
+		[ "$output" = "$XDG_CACHE_HOME" ]
+	fi
 }
 
 @test "config-home (no arg) honours XDG_CONFIG_HOME" {
-	require_non_root
 	run "$ACCOUNT_BIN" config-home
 	[ "$status" -eq 0 ]
-	[ "$output" = "$XDG_CONFIG_HOME" ]
+	if [ "$EUID" -eq 0 ]; then
+		[ "$output" = "/etc" ]
+	else
+		[ "$output" = "$XDG_CONFIG_HOME" ]
+	fi
 }
 
 @test "data-home (no arg) honours XDG_DATA_HOME" {
-	require_non_root
 	run "$ACCOUNT_BIN" data-home
 	[ "$status" -eq 0 ]
-	[ "$output" = "$XDG_DATA_HOME" ]
+	if [ "$EUID" -eq 0 ]; then
+		[ "$output" = "/var" ]
+	else
+		[ "$output" = "$XDG_DATA_HOME" ]
+	fi
 }
 
 @test "share-home (no arg) honours XDG_SHARE_HOME" {
-	require_non_root
 	run "$ACCOUNT_BIN" share-home
 	[ "$status" -eq 0 ]
-	[ "$output" = "$XDG_SHARE_HOME" ]
+	if [ "$EUID" -eq 0 ]; then
+		[ "$output" = "/usr/local/share" ]
+	else
+		[ "$output" = "$XDG_SHARE_HOME" ]
+	fi
 }
 
 @test "source-home (no arg) honours XDG_SOURCE_HOME" {
-	require_non_root
 	run "$ACCOUNT_BIN" source-home
 	[ "$status" -eq 0 ]
-	[ "$output" = "$XDG_SOURCE_HOME" ]
+	if [ "$EUID" -eq 0 ]; then
+		[ "$output" = "/usr/local/src" ]
+	else
+		[ "$output" = "$XDG_SOURCE_HOME" ]
+	fi
 }
 
 @test "backup-home (no arg) honours XDG_BACKUP_HOME" {
-	require_non_root
 	run "$ACCOUNT_BIN" backup-home
 	[ "$status" -eq 0 ]
-	[ "$output" = "$XDG_BACKUP_HOME" ]
+	if [ "$EUID" -eq 0 ]; then
+		[ "$output" = "/var/backups" ]
+	else
+		[ "$output" = "$XDG_BACKUP_HOME" ]
+	fi
 }
 
 # ---------------------------------------------------------------------------
@@ -334,7 +353,6 @@ teardown() {
 }
 
 @test "master returns key-comment from authorized_keys" {
-	require_non_root
 	mkdir -p "$HOME/.ssh"
 	echo "ssh-rsa AAAA bob@example.com" > "$HOME/.ssh/authorized_keys"
 	run "$ACCOUNT_BIN" master

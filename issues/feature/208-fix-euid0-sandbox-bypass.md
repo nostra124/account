@@ -2,7 +2,7 @@
 id: FEAT-208
 type: feature
 priority: medium
-status: open
+status: done
 ---
 
 # Fix EUID==0 sandbox bypass: stop skipping 8 unit tests under root
