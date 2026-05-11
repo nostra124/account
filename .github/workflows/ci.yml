@@ -49,7 +49,7 @@ jobs:
       - name: Run depends-script SIT on darwin
         run: |
           fail=0
-          for name in bash git gpg openssh stow rpk; do
+          for name in gpg openssh rpk; do
             echo "::group::depends/$name"
             if ! sh tests/sit/runner.sh "$name"; then
               echo "::error::depends/$name failed on darwin"

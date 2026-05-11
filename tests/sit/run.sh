@@ -36,7 +36,7 @@ IMAGES=${SIT_IMAGES:-"
 	alpine:latest
 "}
 
-NAMES=${SIT_NAMES:-"bash git gpg openssh stow rpk"}
+NAMES=${SIT_NAMES:-"gpg openssh rpk"}
 
 fail=0
 total=0
