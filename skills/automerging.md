@@ -87,16 +87,47 @@ When working in this repo and pushing changes:
 
 1. After the first push, **open the PR as a draft** if one
    doesn't exist.
-2. After every push, **check CI status** via the GitHub MCP
-   server's `pull_request_read` tool (`method: get_check_runs`).
-3. If CI is green, **mark ready** and **enable auto-merge**
-   (squash) — unless the maintainer has explicitly indicated
-   they want manual review first.
-4. If CI is red, **investigate via the PR-comment channel**,
-   file a BUG if the failure is novel, write the failing test
-   first, push the fix.
-5. Subscribe to the PR's activity (`subscribe_pr_activity`)
-   so subsequent CI events wake the session. Do not poll.
+2. **Immediately call `subscribe_pr_activity`** for the PR.
+   The subscription is idempotent (safe to call on every
+   push). CI completion events for *both* success and
+   failure conclusions arrive as `<github-webhook-activity>`
+   messages and wake the session.
+3. **End the turn**. Do not poll. Do not sleep. Do not
+   repeatedly read `get_check_runs`. The session is webhook-
+   driven from here.
+4. When the webhook for a CI completion arrives:
+   - **Green** (or PR reports `clean` status): if a previous
+     `enable_pr_auto_merge` call returned "already in clean
+     status", call `merge_pull_request` directly (squash).
+     Otherwise mark the PR ready (`update_pull_request
+     draft: false`) and call `enable_pr_auto_merge`.
+   - **Red**: read the `<!-- ci-failure: <job> -->` comment
+     posted by `tests/ci-post-failure.sh`, follow
+     `skills/bugs.md` (file BUG → write failing test →
+     fix → push). The new push triggers a new CI run; the
+     subscription is still active so the next webhook will
+     wake the session again.
+5. The session is "done" when:
+   - the PR is merged (the
+     `<github-webhook-activity>` "merged" event auto-
+     unsubscribes), **or**
+   - the maintainer explicitly says to stop.
+
+   Anything else — pending checks, partial successes, a
+   single-job failure with the fix in flight — means the
+   contract is still active. The agent waits for the next
+   webhook; the session does not "hang" because a webhook
+   will arrive (success, failure, or timeout-equivalent).
+
+### Why not poll?
+
+Polling burns tokens, races against GitHub's eventual-
+consistency on combined-status fields, and produces wrong
+answers when a check transitions between calls.
+`get_check_runs` is fine for a *one-shot* read inside a
+single turn (e.g. right after opening the PR, to see what
+state we're starting from). It is the wrong tool for
+"waiting until CI completes" — webhooks are.
 
 ## 6. When to NOT auto-merge
 

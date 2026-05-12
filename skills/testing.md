@@ -81,9 +81,20 @@ unit layer on a host that has `bats`.
 | `lint (typos)` | ubuntu | grep guards (BUG-005, BUG-004) | yes |
 | `unit (linux)` | ubuntu, runner user | unit | yes |
 | `unit (linux, root)` | ubuntu, sudo | unit (root path) | yes |
-| `unit (macos)` | macos | unit | no (continue-on-error, FEAT-212) |
+| `unit (macos)` | macos | unit | yes (FEAT-212 closed) |
 | `sit (<image>)` | ubuntu, docker | SIT per-image | yes |
 | `sit (darwin)` | macos | SIT (depends-scripts) | yes |
+
+### Listening for CI completion (no polling)
+
+After pushing, the agent **subscribes** to the PR
+(`subscribe_pr_activity`) and **ends its turn**. Both green
+and red completion events arrive as
+`<github-webhook-activity>` messages — there is no scenario
+where the session "hangs waiting for CI" because every
+terminal CI status delivers a wake. See
+`skills/automerging.md` §5 for the full contract; the
+short version is **subscribe + end-turn**, never poll.
 
 ## 4. Failure → PR-comment channel
 
