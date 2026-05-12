@@ -2,7 +2,7 @@
 id: FEAT-197
 type: feature
 priority: low
-status: open
+status: done
 ---
 
 # `account-user` agent skill

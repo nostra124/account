@@ -138,6 +138,8 @@ linkage from code to spec is preserved in git history.
 ## 7. Cross-references
 
 - Bug workflow → `skills/bugs.md`
+- Milestone institution → `skills/milestones.md`
+- Audit institution → `skills/audit.md`
 - Test layers and pre-push hygiene → `skills/testing.md`
 - Logging conventions → `skills/logging.md`
 - Auto-merge process → `skills/automerging.md`

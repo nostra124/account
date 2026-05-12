@@ -128,4 +128,6 @@ test (now skipped on that platform) is the regression record.
 - Test layers and pre-push hygiene → `skills/testing.md`
 - Logging level conventions → `skills/logging.md`
 - Feature workflow → `skills/features.md`
+- Milestone institution → `skills/milestones.md`
+- Audit institution → `skills/audit.md`
 - Auto-merge process → `skills/automerging.md`

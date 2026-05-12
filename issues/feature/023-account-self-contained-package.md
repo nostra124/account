@@ -68,3 +68,29 @@ For `bin/account`:
    subcommand that takes arguments.
 6. `docs/templates/CLAUDE.md.account` exists and references the
    foundation template.
+
+## Status — partial (per AUDIT-2026-05-12)
+
+ACs 1-4 verified by the first audit
+(`issues/audits/2026-05-12-first-audit.md`). Two remain
+unsatisfied and are carried forward as separate follow-up
+issues to be filed in the next planning cycle:
+
+- **AC 5** → **FEAT-219** "refresh
+  `etc/bash_completion.d/account` to cover every shipped
+  subcommand". The existing completion list is from an
+  older version of `bin/account` and is missing many
+  commands (`domainname`, `master`, `slaves`, `online`,
+  `status`, `run`, `exe`, `sync`, `platform`, `hosts`,
+  `remote-url`, `put`, `set`, `get`,
+  `gpg-import-public-key`, `ssh-import-public-key`, …).
+
+- **AC 6** → **FEAT-220** "create
+  `docs/templates/CLAUDE.md.account` template". The
+  directory `docs/templates/` does not yet exist; the
+  template's content is sketched in this issue's
+  Implementation §6 and can be lifted from there.
+
+This issue stays `open` until both follow-ups land. It
+will be moved into a future ROADMAP that bundles AC-5
+and AC-6 closure with any related packaging work.
