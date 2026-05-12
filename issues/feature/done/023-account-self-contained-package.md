@@ -2,7 +2,7 @@
 id: FEAT-023
 type: feature
 priority: high
-status: open
+status: done
 ---
 
 # Account self-contained packaging: docs, tests, man page, completion, CLAUDE.md
@@ -94,3 +94,9 @@ issues to be filed in the next planning cycle:
 This issue stays `open` until both follow-ups land. It
 will be moved into a future ROADMAP that bundles AC-5
 and AC-6 closure with any related packaging work.
+
+## Closed — ROADMAP-1.5.0 lands both follow-ups
+
+FEAT-219 and FEAT-220 both landed in ROADMAP-1.5.0,
+closing AC 5 and AC 6 respectively. With 6/6 ACs
+verified, this issue is now `done`.
