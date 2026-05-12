@@ -91,16 +91,12 @@ jobs:
 
   # FEAT-212: exercise the pure-bash subset of bin/account on a
   # Darwin kernel. Catches GNU vs BSD utility differences (e.g.
-  # `stat -c` vs `stat -f`, `tr` collation classes) before they
-  # surface on a user's machine.
-  #
-  # continue-on-error while we hunt the specific failure. The
-  # Post-failure step uploads the bats output to a PR comment so
-  # the maintaining agent can read it without log-download access.
+  # `stat -c` vs `stat -f`, `tr` collation classes) and APFS
+  # case-insensitivity quirks (the FEAT-214 slaves-case test
+  # skips cleanly on case-insensitive filesystems).
   unit-macos:
     name: unit (macos)
     runs-on: macos-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: Install bats

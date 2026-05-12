@@ -449,7 +449,26 @@ teardown() {
 # `command:identity` (which already lowercases via `hostname -f |
 # tr '[:upper:]' '[:lower:]'`). Callers should always pass
 # lowercase.
+#
+# Caveat (macOS APFS / HFS+ default): the filesystem is
+# case-insensitive on stock macOS installs, so `Alice@example.com`
+# and `alice@example.com` resolve to the same inode and the
+# script's `test -f` succeeds regardless of the script's own
+# lack of lowercasing. The test's intent is unverifiable from
+# runtime behaviour on those filesystems; skip cleanly there.
+# The asymmetry is still documented in FEAT-214 and pinned by
+# code review on the case-sensitive path.
 @test "slaves is case-sensitive (unlike has, FEAT-214)" {
+	# Probe filesystem case-sensitivity. Create a lowercase
+	# probe and check whether the uppercase name resolves to it.
+	probe="$BATS_TMPDIR/case-probe.$$"
+	touch "${probe}-lower"
+	if [ -f "${probe}-LOWER" ]; then
+		rm -f "${probe}-lower"
+		skip "filesystem is case-insensitive (HFS+/APFS default); test intent unverifiable"
+	fi
+	rm -f "${probe}-lower"
+
 	echo "carol@example.com" > "$SELF_CONFIG/slaves/alice@example.com"
 	run "$ACCOUNT_BIN" slaves Alice@example.com
 	[ "$status" -eq 0 ]

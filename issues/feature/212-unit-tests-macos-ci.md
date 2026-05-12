@@ -2,7 +2,7 @@
 id: FEAT-212
 type: feature
 priority: medium
-status: open
+status: done
 ---
 
 # Run unit tests on `macos-latest` in CI
@@ -62,23 +62,26 @@ during the macOS run.
    as follow-up issues.
 4. `continue-on-error: true` is removed once the job is green.
 
-## Status — partial
+## Status — done
 
-The job was added in commit `4e9cf65` (and now also runs a
-diagnostics step in commit `<this-fix>`). On PR #6 it failed
-twice without exposing which test failed. The agent that added
-the job has no `gh` CLI access and the GitHub MCP server doesn't
-expose workflow-log retrieval, so the precise `not ok` lines are
-not visible from the agent side.
+Resolved via the CI-failure → PR-comment channel introduced in
+the testing-institutions commit (`tests/ci-post-failure.sh`).
+The next failing `unit (macos)` run posted its log tail to the
+PR, surfacing test 51 (`slaves is case-sensitive (unlike has,
+FEAT-214)`) as the sole failure.
 
-**Unblock procedure** (any one of these closes this issue):
+Root cause: macOS GitHub runners use APFS in its default
+case-insensitive mode. The script's `command:slaves` reads a
+file by its argument verbatim; on a case-insensitive
+filesystem, `Alice@example.com` and `alice@example.com`
+resolve to the same inode, so the script's lack of lowercasing
+is unverifiable from runtime behaviour.
 
-1. Maintainer pastes the `not ok` lines from the next failed
-   `unit (macos)` run into a PR comment; the fix is almost
-   certainly a one-test `skip`-guard or assertion tweak.
-2. Maintainer runs the suite locally on macOS and reports the
-   failing assertions.
-3. Run `gh run view <run-id> --log` and attach the output.
+Fix: the test now probes filesystem case-sensitivity (creates
+a lowercase file, checks whether the uppercase name resolves
+to it) and skips cleanly when case-insensitive. The asymmetry
+documented in FEAT-214 is still pinned by code review and the
+test continues to assert correctness on case-sensitive
+filesystems (Linux ext4/xfs).
 
-The job is currently `continue-on-error: true` so it does not
-gate merge; remove that flag once the failure is fixed.
+`continue-on-error: true` has been removed from `unit-macos`.

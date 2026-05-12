@@ -19,7 +19,7 @@ tests silently never run.
 |----|------|----------|-------|--------|
 | [BUG-002](./bug/002-sit-names-missing-depends-scripts.md) | bug | high | SIT `SIT_NAMES` lists depends scripts not shipped (`bash git stow`) | done |
 | [FEAT-208](./feature/208-fix-euid0-sandbox-bypass.md) | feature | medium | Fix EUID==0 sandbox bypass: stop skipping 8 unit tests under root | done |
-| [FEAT-212](./feature/212-unit-tests-macos-ci.md) | feature | medium | Run unit tests on `macos-latest` in CI | partial |
+| [FEAT-212](./feature/212-unit-tests-macos-ci.md) | feature | medium | Run unit tests on `macos-latest` in CI | done |
 | [FEAT-215](./feature/215-harden-sit-sudo-shim.md) | feature | low | Harden SIT runner sudo shim against non-container execution | done |
 
 ## Delivery notes
@@ -31,13 +31,11 @@ tests silently never run.
   `setup()`, `require_non_root` is gone, and a new `unit (linux,
   root)` CI job exercises the path. XDG-home tests now assert both
   the root and non-root branches so both code paths are pinned.
-- **FEAT-212** is partially done — `unit-macos` job exists but
-  failed on first runs without surfacing actionable diagnostics
-  to the agent (no `gh` log access from the sandbox). Job is
-  `continue-on-error: true` so it does not gate merge, and a
-  Diagnostics step now reports `uname`, bash version, bats
-  version, and external-tool availability. See FEAT-212 issue
-  for the unblock procedure.
+- **FEAT-212** is done — `unit-macos` is now a required check.
+  The CI-failure → PR-comment channel surfaced test 51's
+  filesystem-case-sensitivity dependency on APFS; the test now
+  probes case-sensitivity and skips cleanly on
+  case-insensitive filesystems.
 - **FEAT-215** is done — the sudo-shim block now requires either
   `/.dockerenv` to exist or `SIT_IN_CONTAINER=1` to be set;
   `tests/sit/run.sh` passes the envvar to every container it
