@@ -5,8 +5,15 @@ on:
     branches: [master, main]
   pull_request:
 
+# `pull-requests: write` lets the post-failure step
+# (tests/ci-post-failure.sh) leave a comment on the PR containing
+# the failing job's log tail. The agent that maintains this repo
+# reads PR comments via the GitHub MCP server but cannot download
+# workflow logs, so this is the channel for failure context. See
+# skills/testing.md.
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   # BUG-005: guard against the `unkown` typo (and other common
@@ -45,7 +52,16 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y bats
       - name: Run unit tests
-        run: bats tests/unit/*.bats
+        shell: bash
+        run: |
+          set -o pipefail
+          bats tests/unit/*.bats 2>&1 | tee ${{ runner.temp }}/unit.log
+      - name: Post failure to PR
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: tests/ci-post-failure.sh "${{ runner.temp }}/unit.log" "unit (linux)"
 
   # FEAT-208: confirm the ACCOUNT_HOME_OVERRIDE path keeps the
   # sandboxed $HOME intact when bin/account runs under EUID==0.
@@ -61,20 +77,26 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y bats
       - name: Run unit tests as root
-        run: sudo --preserve-env=PATH bats tests/unit/*.bats
+        shell: bash
+        run: |
+          set -o pipefail
+          sudo --preserve-env=PATH bats tests/unit/*.bats 2>&1 \
+            | tee ${{ runner.temp }}/unit-root.log
+      - name: Post failure to PR
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: tests/ci-post-failure.sh "${{ runner.temp }}/unit-root.log" "unit (linux, root)"
 
   # FEAT-212: exercise the pure-bash subset of bin/account on a
   # Darwin kernel. Catches GNU vs BSD utility differences (e.g.
   # `stat -c` vs `stat -f`, `tr` collation classes) before they
   # surface on a user's machine.
   #
-  # continue-on-error while we hunt the specific failure — the
-  # first runs failed and the agent that added this job has no
-  # access to GitHub workflow logs, so the precise assertion that
-  # breaks under Darwin is still unknown. The job still runs and
-  # its result is visible on every PR; it just doesn't gate merge.
-  # See FEAT-212 issue for the unblock procedure (paste the bats
-  # output once and the fix is small).
+  # continue-on-error while we hunt the specific failure. The
+  # Post-failure step uploads the bats output to a PR comment so
+  # the maintaining agent can read it without log-download access.
   unit-macos:
     name: unit (macos)
     runs-on: macos-latest
@@ -90,7 +112,17 @@ jobs:
           bats --version
           which gpg ssh-keygen hostname tr sed grep || true
       - name: Run unit tests
-        run: bats --print-output-on-failure tests/unit/*.bats
+        shell: bash
+        run: |
+          set -o pipefail
+          bats --print-output-on-failure tests/unit/*.bats 2>&1 \
+            | tee ${{ runner.temp }}/unit-macos.log
+      - name: Post failure to PR
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: tests/ci-post-failure.sh "${{ runner.temp }}/unit-macos.log" "unit (macos)"
 
   sit-linux:
     name: sit (${{ matrix.image }})
@@ -110,7 +142,16 @@ jobs:
         env:
           SIT_ENGINE: docker
           SIT_IMAGES: ${{ matrix.image }}
-        run: tests/sit/run.sh
+        shell: bash
+        run: |
+          set -o pipefail
+          tests/sit/run.sh 2>&1 | tee ${{ runner.temp }}/sit.log
+      - name: Post failure to PR
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: tests/ci-post-failure.sh "${{ runner.temp }}/sit.log" "sit (${{ matrix.image }})"
 
   sit-darwin:
     name: sit (darwin)
@@ -118,14 +159,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run depends-script SIT on darwin
+        shell: bash
         run: |
-          fail=0
-          for name in gpg openssh rpk; do
-            echo "::group::depends/$name"
-            if ! sh tests/sit/runner.sh "$name"; then
-              echo "::error::depends/$name failed on darwin"
-              fail=$((fail + 1))
-            fi
-            echo "::endgroup::"
-          done
-          [ "$fail" -eq 0 ] || exit 1
+          set -o pipefail
+          {
+            fail=0
+            for name in gpg openssh rpk; do
+              echo "::group::depends/$name"
+              if ! sh tests/sit/runner.sh "$name"; then
+                echo "::error::depends/$name failed on darwin"
+                fail=$((fail + 1))
+              fi
+              echo "::endgroup::"
+            done
+            [ "$fail" -eq 0 ] || exit 1
+          } 2>&1 | tee ${{ runner.temp }}/sit-darwin.log
+      - name: Post failure to PR
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: tests/ci-post-failure.sh "${{ runner.temp }}/sit-darwin.log" "sit (darwin)"

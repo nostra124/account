@@ -92,3 +92,26 @@ Semver. Every release is recorded in `.rpk/versions`
 (TSV ledger \(em no orphan SHAs per rpk's BUG-001
 lesson). The `version` builtin returns the current
 `.rpk/version`.
+
+## 9. Testing institutions
+
+See **`skills/testing.md`** for the full contract. Summary:
+
+- Three layers: unit (`tests/unit/*.bats`), SIT
+  (`tests/sit/`), PIT (`tests/pit/`, reserved).
+- One pre-push entry: `tests/pre-push.sh` (also
+  `make pre-push`, also `.githooks/pre-push` after
+  `make install-hooks`).
+- Layer selection by environment:
+  - cloud sandbox / no container engine \(em unit only
+  - desktop with reachable podman or docker \(em unit + SIT
+    (+ PIT if `tests/pit/` exists)
+- CI posts every failing job's log tail to the PR as a
+  comment (`tests/ci-post-failure.sh`) so the maintaining
+  agent has access to failure context without
+  workflow-log downloads.
+
+**Agent contract**: run `tests/pre-push.sh` (or
+`make pre-push`) before every `git push`. The script
+soft-skips layers whose prerequisites are absent, but a
+present prerequisite's failure must never be ignored.

@@ -1,0 +1,10 @@
+#!/bin/sh
+# Repo-managed git pre-push hook.
+#
+# Activate once per clone:
+#     git config core.hooksPath .githooks
+#
+# Wires the hook to the same script that `make pre-push` and the
+# Claude Code sandbox use, so all three entry points have identical
+# behaviour. See skills/testing.md for the institution.
+exec sh "$(git rev-parse --show-toplevel)/tests/pre-push.sh" "$@"
