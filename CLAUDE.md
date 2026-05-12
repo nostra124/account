@@ -137,9 +137,13 @@ mode.
 ## 11. Auto-merge
 
 See **`skills/automerging.md`**. Agent-authored PRs default
-to draft → green CI → ready → squash-merge. The agent
-subscribes to PR activity and reacts to CI failures via the
-PR-comment channel from `skills/testing.md`. Required checks
-are the full CI matrix minus jobs explicitly tagged
+to draft → green CI → ready → squash-merge. After every
+push the agent **subscribes** (`subscribe_pr_activity`) and
+**ends the turn** — webhooks deliver both green and red CI
+completions, so the session is never waiting on a status
+that won't wake it. **Do not poll** `get_check_runs` in a
+loop; use it only for the one-shot read inside the turn
+that opened the PR or pushed the fix. Required checks are
+the full CI matrix minus jobs explicitly tagged
 `continue-on-error: true` (which must reference an open
 issue).
