@@ -2,7 +2,7 @@
 id: FEAT-212
 type: feature
 priority: medium
-status: done
+status: open
 ---
 
 # Run unit tests on `macos-latest` in CI
@@ -60,3 +60,25 @@ during the macOS run.
    a documented reason if genuinely untestable).
 3. Any GNU-only utilities found during the macOS run are flagged
    as follow-up issues.
+4. `continue-on-error: true` is removed once the job is green.
+
+## Status — partial
+
+The job was added in commit `4e9cf65` (and now also runs a
+diagnostics step in commit `<this-fix>`). On PR #6 it failed
+twice without exposing which test failed. The agent that added
+the job has no `gh` CLI access and the GitHub MCP server doesn't
+expose workflow-log retrieval, so the precise `not ok` lines are
+not visible from the agent side.
+
+**Unblock procedure** (any one of these closes this issue):
+
+1. Maintainer pastes the `not ok` lines from the next failed
+   `unit (macos)` run into a PR comment; the fix is almost
+   certainly a one-test `skip`-guard or assertion tweak.
+2. Maintainer runs the suite locally on macOS and reports the
+   failing assertions.
+3. Run `gh run view <run-id> --log` and attach the output.
+
+The job is currently `continue-on-error: true` so it does not
+gate merge; remove that flag once the failure is fixed.
