@@ -24,7 +24,8 @@ BUILD_DIR = build/$(PACKAGE)
 
 .PHONY: all install uninstall check check-unit check-vectors \
         check-sit check-all lint test help package clean \
-        install-skills-user uninstall-skills-user
+        install-skills-user uninstall-skills-user pre-push \
+        install-hooks
 
 all: install
 
@@ -134,6 +135,16 @@ package:
 	@git add .rpk/version .rpk/versions
 	@git commit -m "package $(VERSION)"
 	@git tag "v$(VERSION)"
+
+# Pre-push hygiene — environment-aware test runner.
+# See skills/testing.md for the layered contract.
+pre-push:
+	@sh tests/pre-push.sh
+
+# One-time setup: point git at the in-repo hooks dir.
+install-hooks:
+	@git config core.hooksPath .githooks
+	@echo "git hooks now run from .githooks/"
 
 # Per FEAT-191's invariant: clean never touches installed files.
 clean:

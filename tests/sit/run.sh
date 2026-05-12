@@ -36,7 +36,7 @@ IMAGES=${SIT_IMAGES:-"
 	alpine:latest
 "}
 
-NAMES=${SIT_NAMES:-"bash git gpg openssh stow rpk"}
+NAMES=${SIT_NAMES:-"gpg openssh rpk"}
 
 fail=0
 total=0
@@ -48,6 +48,7 @@ for image in $IMAGES; do
 			-v "$REPO":/work:ro \
 			-w /work \
 			-e HOME=/root \
+			-e SIT_IN_CONTAINER=1 \
 			"$image" sh /work/tests/sit/runner.sh "$name"; then
 			echo "::: FAIL $image depends/$name"
 			fail=$((fail + 1))

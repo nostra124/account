@@ -15,21 +15,40 @@ VERSION=$(cat "$__d/../.rpk/version" 2>/dev/null || cat "$__d/../share/$__s/vers
 unset __d __s
 SELF=$(basename $0)
 
+# Logging helpers — five levels in increasing severity:
+#   debug  → SELF_DEBUG=1 gates output;   always returns 0
+#   info   → SELF_QUIET=1 silences;       always returns 0
+#   warn   → always emitted;              always returns 0
+#   error  → always emitted;              always returns 1 (non-exiting)
+#   fatal  → always emitted; exits with the second arg (default 1)
+#
+# All five share the format `<self>: <ANSI><level> - <msg><reset>`
+# so output is greppable by level prefix even when colours are
+# stripped. See skills/logging.md for the full contract.
+
 fatal() {
 	echo -e "$SELF: \033[31;mfatal - $1\033[0m" >&2
 	exit "${2:-1}"
 }
 
-debug() {
-	[ -n "$SELF_DEBUG" ] && echo -e "$SELF: \033[90;mdebug - $@\033[0m" >&2
-}
-
-info() {
-	[ ! -n "$SELF_QUIET" ] && echo -e "$SELF: info - \033[32;m$@\033[0m" >&2
+error() {
+	echo -e "$SELF: \033[31;merror - $@\033[0m" >&2
+	return 1
 }
 
 warn() {
-	echo -e "$SELF: warn - \033[33;1;m$@\033[0m" >&2
+	echo -e "$SELF: \033[33;1;mwarn - $@\033[0m" >&2
+	return 0
+}
+
+info() {
+	[ -z "$SELF_QUIET" ] && echo -e "$SELF: \033[32;minfo - $@\033[0m" >&2
+	return 0
+}
+
+debug() {
+	[ -n "$SELF_DEBUG" ] && echo -e "$SELF: \033[90;mdebug - $@\033[0m" >&2
+	return 0
 }
 
 # checks if a certain function exists: eg. has command update
@@ -63,7 +82,7 @@ done
 : ${EUID:=$(id -u)}
 : ${USER:=$(id -u -n)}
 
-if [ "$EUID" -eq 0 ]; then
+if [ "$EUID" -eq 0 ] && [ -z "$ACCOUNT_HOME_OVERRIDE" ]; then
 	USER=root
 	HOME=$(sudo -i sh -c 'echo $HOME')
 fi
@@ -471,7 +490,7 @@ command:gpg-encrypt() {
 			ARGS="$ARGS --recipient $(command:gpg-fingerprint $ACCOUNT)"
 		done
 	else
-		for ACCOUNT in $(account list); do
+		for ACCOUNT in $(command:list); do
 			ARGS="$ARGS --recipient $(command:gpg-fingerprint $ACCOUNT)"
 		done
 	fi
@@ -1071,7 +1090,7 @@ command:platform() {
 				echo "macos"
 				;;
 			*)
-				echo "unkown"
+				echo "unknown"
 				;;
 		esac
 	else
@@ -1186,6 +1205,15 @@ command:get() {
 		return 1
 	fi
 }
+
+#------------------------------------------------------------------------------
+# Source-only mode: tests source this file to call helpers (fatal,
+# error, warn, info, debug) directly. Setting ACCOUNT_SOURCE_ONLY=1
+# tells us to stop here and let the sourcing shell drive — no
+# dispatcher, no help, no exit. See skills/logging.md.
+if [ -n "$ACCOUNT_SOURCE_ONLY" ]; then
+	return 0 2>/dev/null || exit 0
+fi
 
 #------------------------------------------------------------------------------
 # Command-line processing
