@@ -93,15 +93,19 @@ else
 	echo "==> pre-push: skip SIT/PIT (no container engine on PATH)"
 fi
 
+# Failure must be reported before the "nothing ran" short-circuit:
+# a layer can fail (fail=1) without contributing to `ran` (which
+# only tracks successful layers). Reporting fail first ensures a
+# failed layer never silently exits 0.
+if [ "$fail" -ne 0 ]; then
+	echo "==> pre-push: FAILED (layers run:$ran)" >&2
+	exit 1
+fi
+
 if [ -z "$ran" ]; then
 	echo "==> pre-push: nothing ran (no bats, no container engine)" >&2
 	echo "==> pre-push: install bats and/or podman to enable local pre-push checks." >&2
 	exit 0
-fi
-
-if [ "$fail" -ne 0 ]; then
-	echo "==> pre-push: FAILED (layers run:$ran)" >&2
-	exit 1
 fi
 
 echo "==> pre-push: OK (layers run:$ran)"

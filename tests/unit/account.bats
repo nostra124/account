@@ -114,6 +114,69 @@ teardown() {
 }
 
 # ---------------------------------------------------------------------------
+# Logging helpers — debug / info / warn / error / fatal.
+# Contract documented in skills/logging.md. Tests source the
+# script via ACCOUNT_SOURCE_ONLY=1 so helpers can be called
+# directly without the dispatcher running.
+# ---------------------------------------------------------------------------
+
+@test "debug() is silent unless SELF_DEBUG is set" {
+	run bash -c "ACCOUNT_SOURCE_ONLY=1 source '$ACCOUNT_BIN'; debug 'hello' 2>&1"
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+}
+
+@test "debug() emits 'debug - <msg>' when SELF_DEBUG is set" {
+	run bash -c "ACCOUNT_SOURCE_ONLY=1 source '$ACCOUNT_BIN'; SELF_DEBUG=1 debug 'hello' 2>&1"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"debug - hello"* ]]
+}
+
+@test "info() is silent when SELF_QUIET=1" {
+	run bash -c "ACCOUNT_SOURCE_ONLY=1 source '$ACCOUNT_BIN'; SELF_QUIET=1 info 'hello' 2>&1"
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+}
+
+@test "info() emits 'info - <msg>' when SELF_QUIET is unset" {
+	run bash -c "ACCOUNT_SOURCE_ONLY=1 source '$ACCOUNT_BIN'; unset SELF_QUIET; info 'hello' 2>&1"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"info - hello"* ]]
+}
+
+@test "warn() emits 'warn - <msg>' to stderr regardless of SELF_QUIET" {
+	run bash -c "ACCOUNT_SOURCE_ONLY=1 source '$ACCOUNT_BIN'; SELF_QUIET=1 warn 'careful' 2>&1"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"warn - careful"* ]]
+}
+
+@test "error() emits 'error - <msg>' and returns 1 (non-exiting)" {
+	run bash -c "ACCOUNT_SOURCE_ONLY=1 source '$ACCOUNT_BIN'; error 'boom' 2>&1; echo retval=\$?"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"error - boom"* ]]
+	[[ "$output" == *"retval=1"* ]]
+}
+
+@test "fatal() emits 'fatal - <msg>' and exits non-zero" {
+	run bash -c "ACCOUNT_SOURCE_ONLY=1 source '$ACCOUNT_BIN'; fatal 'doomed'"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"fatal - doomed"* ]]
+}
+
+@test "fatal() honours explicit second-arg exit code" {
+	run bash -c "ACCOUNT_SOURCE_ONLY=1 source '$ACCOUNT_BIN'; fatal 'doomed' 42"
+	[ "$status" -eq 42 ]
+	[[ "$output" == *"fatal - doomed"* ]]
+}
+
+@test "ACCOUNT_SOURCE_ONLY=1 source returns without running dispatcher" {
+	run bash -c "ACCOUNT_SOURCE_ONLY=1 source '$ACCOUNT_BIN' && echo sourced"
+	[ "$status" -eq 0 ]
+	# Dispatcher would have printed help; sourced should print marker.
+	[[ "$output" == *"sourced"* ]]
+}
+
+# ---------------------------------------------------------------------------
 # Identity primitives (no external calls beyond `whoami` / `hostname`)
 # ---------------------------------------------------------------------------
 

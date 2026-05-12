@@ -37,9 +37,15 @@ already handles the libexec lookup pattern.)
 
 ## 3. Issue authoring
 
-Same as `CLAUDE.md.foundation`. Frontmatter with
-`id: FEAT-NNN`. **Bugs come before features at the same
-priority level.**
+See **`skills/features.md`** (feature workflow, user-story
+template, ROADMAP grouping) and **`skills/bugs.md`** (bug
+workflow with strict test-first / TDD discipline) for the
+detailed contracts. Summary: frontmatter with `id: FEAT-NNN`
+or `id: BUG-NNN`; **bugs come before features at the same
+priority level**; every new test lands in the same commit as
+the change it covers; CI failures get a PR-comment via
+`tests/ci-post-failure.sh` so the responsible agent can read
+the assertion that broke.
 
 ## 4. The no-shared-lib policy
 
@@ -115,3 +121,25 @@ See **`skills/testing.md`** for the full contract. Summary:
 `make pre-push`) before every `git push`. The script
 soft-skips layers whose prerequisites are absent, but a
 present prerequisite's failure must never be ignored.
+
+## 10. Logging
+
+See **`skills/logging.md`** for the level contract.
+Summary: five levels in increasing severity
+(debug → info → warn → error → fatal), each writes
+to stderr in the format `<self>: <level> - <msg>`
+(colour-wrapped). `debug` gated by `SELF_DEBUG`, `info`
+silenced by `SELF_QUIET`. `error` is the non-exiting
+counterpart to `fatal` and always returns 1. Helpers are
+unit-tested via the `ACCOUNT_SOURCE_ONLY=1` source-only
+mode.
+
+## 11. Auto-merge
+
+See **`skills/automerging.md`**. Agent-authored PRs default
+to draft → green CI → ready → squash-merge. The agent
+subscribes to PR activity and reacts to CI failures via the
+PR-comment channel from `skills/testing.md`. Required checks
+are the full CI matrix minus jobs explicitly tagged
+`continue-on-error: true` (which must reference an open
+issue).
