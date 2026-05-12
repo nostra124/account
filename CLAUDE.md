@@ -143,3 +143,23 @@ PR-comment channel from `skills/testing.md`. Required checks
 are the full CI matrix minus jobs explicitly tagged
 `continue-on-error: true` (which must reference an open
 issue).
+
+## 12. Milestones and audits
+
+See **`skills/milestones.md`** and **`skills/audit.md`**.
+
+Every change to `account` is planned through a milestone:
+`issues/ROADMAP-<X.Y.Z>.md` groups the bugs and features
+that will land in one named release. One session run
+implements one milestone end-to-end. When the milestone is
+done, the ROADMAP file is **deleted** from the working tree
+(git history preserves it); every `status: done` issue is
+**moved** to `issues/{bug,feature}/done/` (never deleted)
+so traceability from shipped behaviour back to spec
+survives forever.
+
+The audit institution
+(`issues/audits/<YYYY-MM-DD>-*.md`) is the periodic check
+that ensures every shipped capability has an owning issue
+and every issue has a matching artifact. Run it after every
+milestone and before every major version bump.

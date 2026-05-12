@@ -2,7 +2,7 @@
 id: FEAT-022
 type: feature
 priority: high
-status: open
+status: done
 ---
 
 # Make `account` the foundation: flip cycles, no runtime deps, document duplication

@@ -2,7 +2,7 @@
 id: FEAT-044
 type: feature
 priority: low
-status: open
+status: done
 ---
 
 # `secret` (and `config`) lean on `account` for SSH-remote resolution
