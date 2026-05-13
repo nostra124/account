@@ -1,32 +1,47 @@
-# completion file for bash
+# bash completion for account(1).
+#
+# The $commands list below is the canonical enumeration of every
+# command:<verb> function in bin/account. Two unit tests in
+# tests/unit/account.bats keep it honest:
+#   - FEAT-219 / "every command:<verb> ... in completion list"
+#   - FEAT-219 / "completion list has no stale verbs"
+# Sorted alphabetically so a maintainer adding a new verb knows
+# exactly where to insert the completion entry.
 _account_complete_entries () {
 	COMPREPLY=()
 	local cur="${COMP_WORDS[COMP_CWORD]}"
-	local commands="help version identity gpg-secret-keys gpg-public-keys gpg-encrypt gpg-decrypt gpg-export-public-key ssh-public-keys ssh-export-public-key init list login exec tasks do set get"
+	local commands="add-user admin backup backup-home cache-home config-home create-user data-home delete-user domainname exe get gpg-decrypt gpg-delete-key gpg-encrypt gpg-export-owner-trust gpg-export-public-key gpg-export-secret-key gpg-fingerprint gpg-fingerprints gpg-import-key gpg-import-owner-trust gpg-import-public-key gpg-public-keys gpg-secret-keys has has-gpg-key has-ssh-key help home hostname hosts identity init insert list master nodename online platform put remote-url remove root run set share-home slaves source-home ssh-export-known-host ssh-export-public-key ssh-export-secret-key ssh-import-known-host ssh-import-public-key ssh-public-keys status sync username version"
 	if [[ $COMP_CWORD -gt 1 ]]; then
-		local lastarg="${COMP_WORDS[$COMP_CWORD-1]}"
 		case "${COMP_WORDS[1]}" in
-			gpg-encrypt)
-				COMPREPLY+=($(compgen -W "$(account list)" -- ${cur}))
+			# Account-arg subcommands — complete from the
+			# locally-registered remote accounts.
+			has|has-gpg-key|has-ssh-key|remove|insert|\
+			online|slaves|exe|sync|platform|home|\
+			cache-home|config-home|data-home|share-home|\
+			source-home|backup-home|hostname|nodename|\
+			domainname|remote-url|gpg-encrypt)
+				COMPREPLY+=($(compgen -W "$(account list 2>/dev/null)" -- ${cur}))
 				;;
-			gpg-export-public-key)
-				COMPREPLY+=($(compgen -W "$(account gpg-public-keys)" -- ${cur}))
+			# Key-id subcommands — complete from known GPG keys.
+			gpg-export-public-key|gpg-delete-key|\
+			gpg-fingerprint|gpg-import-public-key)
+				COMPREPLY+=($(compgen -W "$(account gpg-public-keys 2>/dev/null)" -- ${cur}))
 				;;
-			ssh-export-public-key)
-				COMPREPLY+=($(compgen -W "$(account ssh-public-keys)" -- ${cur}))
+			# SSH key subcommands — complete from known SSH keys.
+			ssh-export-public-key|ssh-import-public-key)
+				COMPREPLY+=($(compgen -W "$(account ssh-public-keys 2>/dev/null)" -- ${cur}))
 				;;
-			login)
-				COMPREPLY+=($(compgen -W "$(account list)" -- ${cur}))
+			# Help on a subcommand — complete from the command list.
+			help)
+				COMPREPLY+=($(compgen -W "${commands}" -- ${cur}))
 				;;
-			exec)
-				COMPREPLY+=($(compgen -W "$(account list)" -- ${cur}))
+			# Group-arg subcommand.
+			add-user)
+				# Second arg is a group name; let the shell's
+				# default file completion fall through.
 				;;
-			do)
-				if [[ $COMP_CWORD -gt 2 ]]; then
-					COMPREPLY+=($(compgen -W "$(account list)" -- ${cur}))
-				else
-					COMPREPLY+=($(compgen -W "$(account tasks)" -- ${cur}))
-				fi
+			# File-arg subcommands — default file completion is fine.
+			put|get|set)
 				;;
 		esac
 	else

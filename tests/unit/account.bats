@@ -98,6 +98,52 @@ teardown() {
 	[[ "$output" == *"local account commands"* ]]
 }
 
+# ---------------------------------------------------------------------------
+# Packaging — FEAT-219 (bash completion) and FEAT-220 (CLAUDE.md.account)
+# ---------------------------------------------------------------------------
+
+# FEAT-219: every command:<verb> defined in bin/account must appear
+# in the bash completion's $commands list. Catches drift in either
+# direction — a new subcommand without a completion entry, or a
+# stale entry referring to a removed command.
+@test "FEAT-219: every command:<verb> in bin/account is in completion list" {
+	local completion="$BATS_TEST_DIRNAME/../../etc/bash_completion.d/account"
+	[ -f "$completion" ]
+	local list
+	list=$(awk -F'"' '/^[[:space:]]*local[[:space:]]+commands=/ {print $2; exit}' "$completion")
+	local missing=""
+	for cmd in $(grep -oE '^command:[a-zA-Z0-9_-]+' "$ACCOUNT_BIN" | sed 's/^command://'); do
+		case " $list " in
+			*" $cmd "*) ;;
+			*) missing="$missing $cmd" ;;
+		esac
+	done
+	[ -z "$missing" ] || { echo "missing from completion:$missing" >&2; false; }
+}
+
+# FEAT-219: the completion's $commands list must not reference
+# verbs that no longer exist in bin/account.
+@test "FEAT-219: completion list has no stale verbs" {
+	local completion="$BATS_TEST_DIRNAME/../../etc/bash_completion.d/account"
+	local list
+	list=$(awk -F'"' '/^[[:space:]]*local[[:space:]]+commands=/ {print $2; exit}' "$completion")
+	local stale=""
+	for cmd in $list; do
+		if ! grep -qE "^command:${cmd}\\(\\)" "$ACCOUNT_BIN"; then
+			stale="$stale $cmd"
+		fi
+	done
+	[ -z "$stale" ] || { echo "stale in completion:$stale" >&2; false; }
+}
+
+# FEAT-220: the per-package CLAUDE.md template exists and references
+# the foundation template (parent collection's CLAUDE.md.foundation).
+@test "FEAT-220: docs/templates/CLAUDE.md.account exists and references foundation template" {
+	local template="$BATS_TEST_DIRNAME/../../docs/templates/CLAUDE.md.account"
+	[ -f "$template" ]
+	grep -q "CLAUDE.md.foundation" "$template"
+}
+
 @test "help mentions gpg related commands group" {
 	run "$ACCOUNT_BIN" help
 	[[ "$output" == *"gpg related commands"* ]]

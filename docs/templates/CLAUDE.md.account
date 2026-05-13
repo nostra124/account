@@ -1,0 +1,186 @@
+# `<package>` — developer notes (template)
+
+> Per-package `CLAUDE.md` template, specialised from
+> **`docs/templates/CLAUDE.md.foundation`** (the parent
+> `scripts`-collection template). When a new package is
+> extracted from the collection, copy this file to
+> `<package>/CLAUDE.md` and customise each section per the
+> guidance below.
+>
+> This file is itself the worked example for the `account`
+> package — the live `CLAUDE.md` in this repo was bootstrapped
+> from it. Subsequent edits to either should be reflected in
+> both during periodic audits (see `skills/audit.md`).
+
+## 1. Scope
+
+**Guide.** One paragraph: what does this package own? List
+the data it stewards, the queries it answers, the side
+effects it performs. Follow with a paragraph naming what is
+**out of scope** so the boundary is explicit.
+
+**Example (account).**
+`account` is the identity foundation. Its scope is:
+
+- the current Unix user's GPG / SSH keys, git config,
+  sudoers
+- the set of remote accounts registered with this host
+  (each represented by a `<account>.pub` key under
+  `$XDG_CONFIG_HOME/account/{ssh,gpg}/`)
+- read-only queries of the local platform (FQDN, host
+  parts, online status)
+
+Out of scope: configuration storage (that's `config`),
+secret material (that's `secret`), repo orchestration
+(that's `repo`), system-user provisioning (that's
+`user`).
+
+## 2. Repo conventions
+
+**Guide.** Document the package's `bin/<name>` shape: is it
+a self-contained dispatcher, or does it split into
+`libexec/<name>/<verb>` files? Are subcommands inline or
+plugin-loaded? Reference the rpk conventions, then call
+out the package-specific deviations (if any).
+
+**Example (account).**
+Standard rpk per-package conventions: `bin/account`
+dispatcher with `command:<verb>` functions, no plugin
+loader. Subcommands are inline; there is no
+`libexec/account/` because account's surface is small
+enough that one self-contained dispatcher beats split
+files.
+
+## 3. Issue authoring
+
+**Guide.** Reference `skills/features.md`,
+`skills/bugs.md`, `skills/milestones.md`, and
+`skills/audit.md` for the contracts. Note the bugs-before-
+features rule, the test-in-the-same-commit rule, and the
+PR-comment CI-failure channel.
+
+**Example (account).**
+See `skills/features.md`, `skills/bugs.md`,
+`skills/milestones.md`, and `skills/audit.md`. Bugs come
+before features at the same priority level; every new test
+lands in the same commit as the change it covers; CI
+failures get a PR-comment via `tests/ci-post-failure.sh`.
+
+## 4. The no-shared-lib policy
+
+**Guide.** State the package's runtime dependencies on
+sibling scripts (ideally: none). Reference the FEAT that
+established the policy. Warn future contributors against
+"DRY-ing it up" by reaching back into sibling packages.
+
+**Example (account).**
+`account` is the foundation. Every line of code it needs
+is right here — no calls to other scripts in the
+collection at runtime. The only declared dependency is
+`rpk` for deployment metadata, never invoked at runtime
+(FEAT-022).
+
+## 5. What is intentionally duplicated
+
+**Guide.** List the snippets lifted from sibling packages
+that the no-shared-lib policy forces into this repo. For
+each, note which sibling it came from and that bug-fixes
+propagate by re-implementation, not by import.
+
+**Example (account).**
+- **cache-home / config-home / data-home computation** —
+  same shape as the corresponding `cache` / `config` /
+  `data` functions, inlined here.
+- **Platform detection** (`account platform`) — same logic
+  as `cluster node platform`, intentionally duplicated.
+- **GPG / SSH key handling** — direct calls to `gpg(1)`
+  and `ssh-keygen(1)`; never delegated to `secret` or
+  `crypt`.
+
+## 6. Consumers
+
+**Guide.** List the other packages in the collection that
+declare `.rpk/depends/<this-package>` and call this
+package at runtime. This is the "who breaks if we break
+the CLI contract" inventory.
+
+**Example (account).**
+Every other script in the collection: `config`, `data`,
+`secret`, `crypt`, `repo`, `event`, `services`, `check`,
+`user`, `cluster`, `bitcoin`, `lightning`, `dht`, … each
+declares `.rpk/depends/account` and calls `account` for
+identity / endpoint / GPG-encrypt / SSH-exec needs.
+
+## 7. Build / install
+
+**Guide.** One paragraph: how does the package install?
+Reference the autoconf umbrella (FEAT-191), the stow-based
+linking, and the always-installable-master invariant.
+
+**Example (account).**
+`./configure && make install` (autoconf umbrella per
+FEAT-191). Stow-based install. `master` is always
+installable; releases are tagged via `.rpk/version`.
+
+## 8. Versioning
+
+**Guide.** Restate the semver + TSV-ledger conventions.
+Point at `.rpk/version` and `.rpk/versions`. Note the
+"no orphan SHAs" rule from rpk's BUG-001.
+
+**Example (account).**
+Semver. Every release is recorded in `.rpk/versions`
+(TSV ledger — no orphan SHAs per rpk's BUG-001 lesson).
+The `version` builtin returns the current `.rpk/version`.
+
+## 9. Testing institutions
+
+**Guide.** Reference `skills/testing.md` and summarise the
+three test layers (unit / SIT / PIT), the pre-push runner,
+and the CI failure-to-PR-comment channel. State the agent
+contract: pre-push gate before every push.
+
+**Example (account).**
+See `skills/testing.md`. Three layers: unit
+(`tests/unit/*.bats`), SIT (`tests/sit/`), PIT
+(`tests/pit/`, reserved). One pre-push entry:
+`tests/pre-push.sh`. CI posts failing-job log tails to
+the PR.
+
+## 10. Logging
+
+**Guide.** Reference `skills/logging.md`. State the five
+levels, the gates (`<SELF>_DEBUG`, `<SELF>_QUIET`), and
+the source-only-mode envvar used by tests.
+
+**Example (account).**
+See `skills/logging.md`. Five levels: debug → info → warn
+→ error → fatal. `SELF_DEBUG` gates debug; `SELF_QUIET`
+silences info. `ACCOUNT_SOURCE_ONLY=1` lets unit tests
+source the script.
+
+## 11. Auto-merge
+
+**Guide.** Reference `skills/automerging.md`. State the
+draft → green → ready → squash lifecycle and the
+subscribe-and-end-turn rule.
+
+**Example (account).**
+See `skills/automerging.md`. Draft → green CI → ready →
+squash-merge. After every push the agent **subscribes**
+(`subscribe_pr_activity`) and **ends the turn**. No
+polling.
+
+## 12. Milestones and audits
+
+**Guide.** Reference `skills/milestones.md` and
+`skills/audit.md`. State the one-session-per-milestone
+rule, the move-to-done convention, and the
+delete-completed-ROADMAP rule.
+
+**Example (account).**
+See `skills/milestones.md` and `skills/audit.md`.
+`issues/ROADMAP-<X.Y.Z>.md` groups bugs and features that
+will land in one release. Completed ROADMAPs are deleted;
+`status: done` issues move to `issues/{bug,feature}/done/`.
+Audits run after every milestone.
